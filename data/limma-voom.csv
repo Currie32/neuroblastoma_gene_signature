@@ -1,0 +1,27 @@
+,external_gene_name,log2FoldChange,padj,gene_biotype,description,ensembl_gene_id_version
+1,VWA7,2.431279284,0.047555118,protein_coding,von Willebrand factor A domain containing 7 [Source:HGNC Symbol;Acc:HGNC:13939],ENSG00000204396.11
+2,ITGA11,2.047691404,0.042484604,protein_coding,integrin subunit alpha 11 [Source:HGNC Symbol;Acc:HGNC:6136],ENSG00000137809.17
+3,IGSF10,1.717702877,0.040908842,protein_coding,immunoglobulin superfamily member 10 [Source:HGNC Symbol;Acc:HGNC:26384],ENSG00000152580.8
+4,CHODL,1.706261066,0.013145379,protein_coding,chondrolectin [Source:HGNC Symbol;Acc:HGNC:17807],ENSG00000154645.14
+5,SH2D3C,1.174026273,0.048800591,protein_coding,SH2 domain containing 3C [Source:HGNC Symbol;Acc:HGNC:16884],ENSG00000095370.20
+6,ZNF423,-0.622764181,0.035822145,protein_coding,zinc finger protein 423 [Source:HGNC Symbol;Acc:HGNC:16762],ENSG00000102935.11
+7,CACNA1D,-0.751113154,0.035655124,protein_coding,calcium voltage-gated channel subunit alpha1 D [Source:HGNC Symbol;Acc:HGNC:1391],ENSG00000157388.19
+8,RPSAP48,-0.814231767,0.048027724,processed_pseudogene,ribosomal protein SA pseudogene 48 [Source:HGNC Symbol;Acc:HGNC:36646],ENSG00000240590.1
+9,PCDHB14,-0.956886232,0.020190995,protein_coding,protocadherin beta 14 [Source:HGNC Symbol;Acc:HGNC:8685],ENSG00000120327.6
+10,IL20RA,-0.962771704,0.02670731,protein_coding,interleukin 20 receptor subunit alpha [Source:HGNC Symbol;Acc:HGNC:6003],ENSG00000016402.13
+11,RGS10,-1.030061679,0.031129813,protein_coding,regulator of G protein signaling 10 [Source:HGNC Symbol;Acc:HGNC:9992],ENSG00000148908.15
+12,CHRDL1,-1.107539532,0.02222557,protein_coding,chordin like 1 [Source:HGNC Symbol;Acc:HGNC:29861],ENSG00000101938.15
+13,SYT3,-1.201853054,0.014312598,protein_coding,synaptotagmin 3 [Source:HGNC Symbol;Acc:HGNC:11511],ENSG00000213023.11
+14,PTPRK,-1.280009457,0.031129813,protein_coding,protein tyrosine phosphatase receptor type K [Source:HGNC Symbol;Acc:HGNC:9674],ENSG00000152894.14
+15,HSPA2,-1.297095428,0.042484604,protein_coding,heat shock protein family A (Hsp70) member 2 [Source:HGNC Symbol;Acc:HGNC:5235],ENSG00000126803.9
+16,DLG2,-1.316149951,0.045734732,protein_coding,discs large MAGUK scaffold protein 2 [Source:HGNC Symbol;Acc:HGNC:2901],ENSG00000150672.17
+17,BCAN,-1.32857468,0.040188269,protein_coding,brevican [Source:HGNC Symbol;Acc:HGNC:23059],ENSG00000132692.19
+18,TRIM5,-1.599359493,0.045734732,protein_coding,tripartite motif containing 5 [Source:HGNC Symbol;Acc:HGNC:16276],ENSG00000132256.19
+19,PLPP2,-1.615454472,0.007298838,protein_coding,phospholipid phosphatase 2 [Source:HGNC Symbol;Acc:HGNC:9230],ENSG00000141934.10
+20,DEPDC4,-1.718543788,0.024342491,protein_coding,DEP domain containing 4 [Source:HGNC Symbol;Acc:HGNC:22952],ENSG00000166153.16
+21,CLDN23,-1.789196113,0.030987376,protein_coding,claudin 23 [Source:HGNC Symbol;Acc:HGNC:17591],ENSG00000253958.2
+22,DENND1C,-1.795768076,0.032159516,protein_coding,DENN domain containing 1C [Source:HGNC Symbol;Acc:HGNC:26225],ENSG00000205744.10
+23,PALM2AKAP2,-1.845600583,0.000243108,protein_coding,PALM2 and AKAP2 fusion [Source:HGNC Symbol;Acc:HGNC:33529],ENSG00000157654.19
+24,GUSBP5,-2.68943682,0.030987376,transcribed_processed_pseudogene,GUSB pseudogene 5 [Source:HGNC Symbol;Acc:HGNC:42319],ENSG00000236296.8
+25,KCNQ3,-3.622693279,0.04104527,protein_coding,potassium voltage-gated channel subfamily Q member 3 [Source:HGNC Symbol;Acc:HGNC:6297],ENSG00000184156.17
+26,SHANK1,-5.947572593,0.024068047,protein_coding,SH3 and multiple ankyrin repeat domains 1 [Source:HGNC Symbol;Acc:HGNC:15474],ENSG00000161681.15
