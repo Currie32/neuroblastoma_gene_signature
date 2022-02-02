@@ -1,0 +1,53 @@
+#find gene names for refseqs and average transcript exrpression to get gene expression
+
+library(biomaRt)
+library(dplyr)
+data_64 <- read.csv('GSE62564_SEQC_NB_RNA-Seq_log2RPM.txt', sep="\t")
+data_167 <- read.csv('DEG/deg_gene_name.csv')
+
+#To convert RefSeqID into external_gene_name
+ensembl <- useMart("ensembl") #database
+ensembl <- useDataset("hsapiens_gene_ensembl", mart=ensembl) # dataset
+
+#from 43827 NM values to only 32009 gene names? - its likely due to non-coding transcripts
+refseq_to_gname <- getBM(attributes = c("refseq_mrna", "external_gene_name"),
+                         filter= c("refseq_mrna"),
+                         values=data_64$RefSeqID, mart=ensembl) #query
+
+
+#get only the refseq_mrna, external_gene_names for the 167
+
+seq_gene_pairs <- refseq_to_gname[refseq_to_gname$external_gene_name %in% data_167$X0 , ]
+
+length(unique(seq_gene_pairs$external_gene_name)) #124 genes but many have multiple refseqs
+
+#get patient expression data for these genes
+data_64 <- data_64[data_64$RefSeqID %in% seq_gene_pairs$refseq_mrna,]
+data_64$external_gene_name <- seq_gene_pairs$external_gene_name
+data_64 = data_64 %>% select(external_gene_name, everything())
+
+#data is in the form of gene expression per transcript - average to get expression per gene.
+
+gene_exp <- data.frame(matrix(ncol=499, nrow=0))
+titles <- colnames(data_64)
+titles <- titles[-c(2)]
+colnames(gene_exp) <- titles
+
+for (i in unique(data_64$external_gene_name)){
+  gene_rows <- data_64[data_64$external_gene_name == i, ]
+
+  if (nrow(gene_rows) >1){
+    av_rows <- gene_rows[, -c(1:2)]
+    av_rows <- t(round(colMeans(av_rows), 3))
+    full_row <- c(cbind(gene_rows[1, 1], av_rows))
+    gene_exp <- rbind(gene_exp, full_row)
+  }
+  else{
+    full_row <- c(gene_rows[, -c(2)])
+    gene_exp <- rbind(gene_exp, full_row)
+  }
+}
+
+
+# to csv
+write.csv(gene_exp, "geo64_clean_nonz.csv", row.names = FALSE)
