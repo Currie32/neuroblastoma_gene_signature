@@ -2,19 +2,20 @@ library("biomaRt")
 library(data.table)
 library(GEOquery)
 
+path <- "~/Imperial/neuroblastoma_gene_signature/data/"
 
 # Load the patients' data
 patients <- load_and_prepare_patient_data()
 
 # Load the patients' expression data
 expression_data <- read.table(
-  "../data/GSE62564_SEQC_NB_RNA-Seq_log2RPM.txt",
+  file.path(path, "GSE62564_SEQC_NB_RNA-Seq_log2RPM.txt"),
   header=TRUE,
   sep="\t"
 )
 
 # Load differentially expressed genes
-gene_list <- read.csv("../data/gene_list.csv")
+gene_list <- read.csv(file.path(path, "gene_list.csv"))
 
 # Create join table for merging the gene_list with the
 # gene expression data
@@ -39,11 +40,7 @@ patients <- merge(
   on="sequence_id",
 )
 
-write.csv(
-  patients,
-  "../data/GSE62564.csv",
-  row.names=FALSE
-)
+write.csv(patients, file.path(path, "GSE62564.csv"), row.names=FALSE)
 
 
 load_and_prepare_patient_data <- function() {
@@ -149,6 +146,9 @@ prepare_expression_data <- function(expression_data){
   
   # Filter to only the expression features
   expression_data <- expression_data[,grepl("SEQC", colnames(expression_data))]
+  
+  # Undo log2 transformation and Z-transform the expression values
+  expression_data <- data.frame(scale(2^expression_data))
   
   # Transpose the expression data
   expression_data_t <- transpose(expression_data)
