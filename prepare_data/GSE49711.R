@@ -2,53 +2,7 @@ library(data.table)
 library(GEOquery)
 
 
-path <- "~/Imperial/neuroblastoma_gene_signature/data/"
-
-# Load differentially expressed genes
-gene_list <- read.csv(file.path(path, "gene_list.csv"))
-
-# Load the patients' data
-geo_id <- "GSE49711"
-patients <- load_and_prepare_patient_data(geo_id)
-
-gse <- getGEO(geo_id)[[1]]
-
-expression_data <- read.csv("~/Downloads/GSE49711_SEQC_NB_TUC_G_log2.txt", sep='\t')
-
-expression_data$X00gene_id
-
-expression_data2 <- expression_data[expression_data$X00gene_id %in% gene_list$external_gene_name,]
-expression_data2 <- expression_data2[,2:length(expression_data)]
-
-expression_data2 <- expression_data2[!duplicated(expression_data2$X00gene_id),]
-
-# Select the genes for future assignment
-genes <- expression_data2$X00gene_id
-
-# Filter to only the expression features
-expression_data2 <- expression_data2[,grepl("SEQC", colnames(expression_data2))]
-
-# Undo log2 transformation and Z-transform the expression values
-expression_data2 <- data.frame(scale(2^expression_data2))
-
-# Transpose the expression data
-expression_data2_t <- transpose(expression_data2)
-
-# Label the columns with the gene names
-colnames(expression_data2_t) <- genes
-
-# Add sequence_id
-expression_data2_t$sequence_id <- colnames(expression_data2)
-
-patients <- pData(gse)
-
-merge(
-  patients,
-  expression_data2_t,
-  on="sequence_id",
-)
-
-
+PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
 
 
 load_and_prepare_patient_data <- function(geo_id) {
@@ -66,12 +20,12 @@ load_and_prepare_patient_data <- function(geo_id) {
   patients <- patients[c(
     "title",
     "geo_accession",
-    "age at diagnosis:ch1",
     "Sex:ch1",
-    "d_fav_all:ch1",
-    "efs bin:ch1",
-    "efs day:ch1",
-    "high risk:ch1"
+    "age at diagnosis:ch1",
+    "high risk:ch1",
+    "death from disease:ch1",
+    "mycn status:ch1",
+    "inss stage:ch1"
   )]
   
   patients <- rename_columns(patients)
@@ -81,3 +35,98 @@ load_and_prepare_patient_data <- function(geo_id) {
 }
 
 
+rename_columns <- function(df) {
+  names(df)[names(df) == "title"] <- "sequence_id"
+  names(df)[names(df) == "geo_accession"] <- "geo_id"
+  names(df)[names(df) == "Sex:ch1"] <- "male"
+  names(df)[names(df) == "age at diagnosis:ch1"] <- "age_at_diagnosis_days"
+  names(df)[names(df) == "high risk:ch1"] <- "high_risk"
+  names(df)[names(df) == "death from disease:ch1"] <- "death_from_disease"
+  names(df)[names(df) == "mycn status:ch1"] <- "mycn_status"
+  names(df)[names(df) == "inss stage:ch1"] <- "inss_stage"
+  
+  return(df)
+}
+
+
+correct_data_types <- function(df) {
+  
+  # Identify the male patients
+  df$male[df$male == "M"] <- 1
+  df$male[df$male == "F"] <- 0
+  
+  # Convert null values to -1, so the feature can be an integer
+  df$mycn_status[df$mycn_status == "N/A"] <- -1
+  
+  df$male <- as.integer(df$male)
+  df$age_at_diagnosis_days <- as.integer(df$age_at_diagnosis_days)
+  df$high_risk <- as.integer(df$high_risk)
+  df$death_from_disease <- as.integer(df$death_from_disease)
+  df$mycn_status <- as.integer(df$mycn_status)
+  df$inss_stage <- as.factor(df$inss_stage)
+  
+  # Create dummy columns from inss_stage
+  df <- dummy_cols(
+    df,
+    select_columns="inss_stage",
+    remove_first_dummy=TRUE,
+    remove_selected_columns=TRUE
+  )
+  
+  return(df)
+}
+
+
+load_and_prepare_expression_data <- function(gene_list) {
+  
+  # Load expression data
+  # Downloaded from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE49711
+  df <- read.csv(file.path(PATH, "GSE49711_SEQC_NB_TUC_G_log2.txt"), sep='\t')
+  
+  # Filter to genes in the gene list
+  df <- df[df$X00gene_id %in% gene_list,]
+  
+  # Remove duplicate genes
+  df <- df[!duplicated(df$X00gene_id),]
+  
+  # Select the genes for future assignment
+  genes <- df$X00gene_id
+  
+  # Filter to only the expression features
+  df <- df[,grepl("SEQC", colnames(df))]
+  
+  # Transpose the expression data
+  df_t <- transpose(df)
+  
+  # Label the columns with the gene names
+  colnames(df_t) <- genes
+  
+  # Undo log2 transformation and Z-transform the expression values
+  df_t <- data.frame(scale(2^df_t))
+  
+  # Add sequence_id
+  df_t$sequence_id <- colnames(df)
+  df_t$sequence_id <- substr(df_t$sequence_id, 1, 10)
+  
+  return(df_t)
+}
+
+
+# Load differentially expressed genes
+gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
+
+# Load the patients' data
+geo_id <- "GSE49711"
+patients <- load_and_prepare_patient_data(geo_id)
+
+expression_data <- load_and_prepare_expression_data(gene_list$external_gene_name)
+
+# Merge patient data with their expression data
+patients <- merge(
+  patients,
+  expression_data,
+  on="sequence_id",
+)
+
+# Save patient data
+write.csv(patients, file.path(PATH, "GSE49711.csv"), row.names=FALSE)

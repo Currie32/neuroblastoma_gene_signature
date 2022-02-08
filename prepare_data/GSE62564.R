@@ -2,51 +2,14 @@ library("biomaRt")
 library(data.table)
 library(GEOquery)
 
-path <- "~/Imperial/neuroblastoma_gene_signature/data/"
 
-# Load the patients' data
-patients <- load_and_prepare_patient_data()
-
-# Load the patients' expression data
-expression_data <- read.table(
-  file.path(path, "GSE62564_SEQC_NB_RNA-Seq_log2RPM.txt"),
-  header=TRUE,
-  sep="\t"
-)
-
-# Load differentially expressed genes
-gene_list <- read.csv(file.path(path, "gene_list.csv"))
-
-# Create join table for merging the gene_list with the
-# gene expression data
-join_table <- create_join_table(gene_list)
-
-# Add refseq_mrna values to gene_list
-gene_list <- merge(gene_list, join_table, on="ensembl_gene_id_version")
-
-# Add external_gene_name to expression data
-expression_data <- merge(
-  gene_list[c("refseq_mrna", "external_gene_name")],
-  expression_data,
-  by.x="refseq_mrna",
-  by.y="RefSeqID"
-)
-
-expression_data <- prepare_expression_data(expression_data)
-
-patients <- merge(
-  patients,
-  expression_data,
-  on="sequence_id",
-)
-
-write.csv(patients, file.path(path, "GSE62564.csv"), row.names=FALSE)
+# Update path as needed
+PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
 
 
-load_and_prepare_patient_data <- function() {
+load_and_prepare_patient_data <- function(geo_id) {
   
   # Load GEO data
-  geo_id <- "GSE62564"
   gse <- getGEO(geo_id)[[1]]
   
   # Get the patient data
@@ -161,3 +124,45 @@ prepare_expression_data <- function(expression_data){
   
   return(expression_data_t)
 }
+
+
+# Load the patients' data
+geo_id <- "GSE62564"
+patients <- load_and_prepare_patient_data(geo_id)
+
+# Load the patients' expression data
+# Downloaded from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE62564
+expression_data <- read.table(
+  file.path(PATH, "GSE62564_SEQC_NB_RNA-Seq_log2RPM.txt"),
+  header=TRUE,
+  sep="\t"
+)
+
+# Load differentially expressed genes
+gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
+
+# Create join table for merging the gene_list with the
+# gene expression data
+join_table <- create_join_table(gene_list)
+
+# Add refseq_mrna values to gene_list
+gene_list <- merge(gene_list, join_table, on="ensembl_gene_id_version")
+
+# Add external_gene_name to expression data
+expression_data <- merge(
+  gene_list[c("refseq_mrna", "external_gene_name")],
+  expression_data,
+  by.x="refseq_mrna",
+  by.y="RefSeqID"
+)
+
+expression_data <- prepare_expression_data(expression_data)
+
+# Merge the patient data with their expression data
+patients <- merge(
+  patients,
+  expression_data,
+  on="sequence_id",
+)
+
+write.csv(patients, file.path(PATH, "GSE62564.csv"), row.names=FALSE)

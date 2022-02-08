@@ -30,6 +30,8 @@ ensembl_gene_id_version = c(
   "ENSG00000196262",
   "ENSG00000166794"
 )
+
+# Create a dataframe using the two vectors from above
 covid_genes = data.frame(external_gene_name, ensembl_gene_id_version)
 
 # Concatenate the dataframes
@@ -42,11 +44,8 @@ gene_list$ensembl_gene_id_version <- gsub("\\..*","", gene_list$ensembl_gene_id_
 # Remove the duplicated entries
 gene_list <- gene_list[!duplicated(gene_list), ]
 
+# Rename column
 names(gene_list)[names(gene_list) == "ensembl_gene_id_version"] <- "ensembl_gene_id"
 
 # Save file
-write.csv(
-  gene_list,
-  "../data/gene_list.csv",
-  row.names=FALSE
-)
+write.csv(gene_list, "../data/gene_list.csv", row.names=FALSE)
