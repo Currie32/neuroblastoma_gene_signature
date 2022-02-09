@@ -1,4 +1,5 @@
 library(dplyr)
+library(tibble)
 
 
 PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
@@ -58,10 +59,18 @@ combine_datasets <- function(GSE1, GSE2) {
 }
 
 
+add_missing_features <- function(train, df) {
+  
+  missing_features <- setdiff(names(train), names(df))
+  df[missing_features] <- 0
+  
+  return (df)
+}
 
 
 GSE49711 <- read.csv(file.path(PATH, "GSE49711.csv"))
 GSE62564 <- read.csv(file.path(PATH, "GSE62564.csv"))
+target_2018 <- read.csv(file.path(PATH, "target_2018.csv"))
 
 # Load differentially expressed genes
 gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
@@ -80,6 +89,12 @@ GSE62564 <- format_GSE_patient_data(
   patients_traits
 )
 
-training <- combine_datasets(GSE49711, GSE62564)
+# Create training dataset
+train <- combine_datasets(GSE49711, GSE62564)
 
-write.csv(training, file.path(PATH, "training.csv"), row.names=FALSE)
+# Add missing features to testing datasets
+target_2018 <- add_missing_features(train, target_2018)
+
+# Save datasets
+write.csv(train, file.path(PATH, "train.csv"), row.names=FALSE)
+write.csv(target_2018, file.path(PATH, "test_target.csv"), row.names=FALSE)

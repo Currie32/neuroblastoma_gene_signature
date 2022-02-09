@@ -1,4 +1,7 @@
-PATH = "~/Downloads/nbl_target_2018_pub/"
+library(data.table)
+
+
+PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
 
 
 load_and_prepare_patient_data <- function() {
@@ -39,6 +42,7 @@ load_and_prepare_patient_data <- function() {
 
 
 rename_columns <- function(df) {
+  
   names(df)[names(df) == "#Identifier to uniquely specify a patient."] <- "sequence_id"
   names(df)[names(df) == "Sex"] <- "male"
   names(df)[names(df) == "Age at which a condition or disease was first diagnosed."] <- "age_at_diagnosis_days"
@@ -91,25 +95,59 @@ correct_data_types <- function(df) {
 }
 
 
+load_and_prepare_expression_data <- function(gene_list) {
+  
+  # Load expression data
+  # Downloaded from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE49711
+  df <- read.csv(
+    file.path(PATH, "data_mrna_seq_rpkm_zscores_ref_all_samples.txt"),
+    sep="\t"
+  )
+  
+  # Filter to genes in the gene list
+  df <- df[df$Hugo_Symbol %in% gene_list,]
+  
+  # Remove duplicate genes
+  df <- df[!duplicated(df$Hugo_Symbol),]
+  
+  # Select the genes for future assignment
+  genes <- df$Hugo_Symbol
+  
+  # Filter to only the expression features
+  df <- df[,grepl("TARGET", colnames(df))]
+  
+  # Transpose the expression data
+  df_t <- transpose(df)
+  
+  # Label the columns with the gene names
+  colnames(df_t) <- genes
+  
+  # Undo log2 transformation and Z-transform the expression values
+  df_t <- data.frame(scale(2^df_t))
+  
+  # Add sequence_id
+  df_t$sequence_id <- colnames(df)
+  df_t$sequence_id <- gsub("\\.", "-", df_t$sequence_id)
+  df_t$sequence_id <- substr(df_t$sequence_id, 1, 16)
+  
+  return(df_t)
+}
 
-data <- read.csv(file.path(PATH, "data_mrna_seq_rpkm_zscores_ref_all_samples.txt"), sep="\t")
-data2 <- read.csv(file.path(PATH, "data_mrna_agilent_microarray_zscores_ref_all_samples.txt"), sep="\t")
+patients <- load_and_prepare_patient_data()
 
 # Load differentially expressed genes
 gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
 
-patients <- load_and_prepare_patient_data()
+expression_data <- load_and_prepare_expression_data(gene_list$external_gene_name)
 
+# Merge patient data with their expression data
+patients <- merge(
+  patients,
+  expression_data,
+  on="sequence_id",
+)
 
-
-
-
-
-
-
-
-
-
-
+# Save patient data
+write.csv(patients, file.path(PATH, "target_2018.csv"), row.names=FALSE)
 
 

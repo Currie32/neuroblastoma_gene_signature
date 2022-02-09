@@ -159,41 +159,55 @@ plot_kaplan_meier <- function(training, survival) {
 
 
 # Load training data
-training <- read.csv(file.path(PATH, "training.csv"))
-training$under_18_months <- is_under_18_months(training)
+train <- read.csv(file.path(PATH, "train.csv"))
+test_target <- read.csv(file.path(PATH, "test_target.csv"))
+
+# Add under_18_months feature
+train$under_18_months <- is_under_18_months(train)
+test_target$under_18_months <- is_under_18_months(test_target)
 
 # Load gene list
 gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
-genes <- colnames(training[, (colnames(training) %in% gene_list$external_gene_name)])
+genes <- colnames(train[, (colnames(train) %in% gene_list$external_gene_name)])
 
 # Create survival for cox regressions
-survival <- Surv(training$event_free_survival_days, training$event_free_survival)
+survival_train <- Surv(train$event_free_survival_days, train$event_free_survival)
+survival_test_target <- Surv(test_target$event_free_survival_days, test_target$event_free_survival)
 
 # Find the combination of features that are most predictive of survival
-candidate_genes <- univariate_cox_regression(genes, training)
-features_significant <- multivariate_cox_regression(candidate_genes, survival, training)
-features_best <- aic_feature_selection(features_significant, survival, training)
-model <- train_model(features_best, training)
+candidate_genes <- univariate_cox_regression(genes, train)
+features_significant <- multivariate_cox_regression(candidate_genes, survival_train, train)
+features_best <- aic_feature_selection(features_significant, survival_train, train)
+model <- train_model(features_best, train)
 
 # Create risk scores
-training$risk_score <- predict(model, type="lp")
-training$risk_score_low <- training$risk_score < median(training$risk_score)
+train$risk_score <- predict(model, type="lp")
+train$risk_score_low <- train$risk_score < median(train$risk_score)
 
-plot_roc_curve(training)
-plot_kaplan_meier(training, survival)
+test_target$risk_score <- predict(model, test_target, type="lp")
+test_target$risk_score_low <- test_target$risk_score < median(train$risk_score)
+
+plot_roc_curve(train)
+plot_roc_curve(test_target)
+
+plot_kaplan_meier(train, survival_train)
+plot_kaplan_meier(test, survival_test)
 
 # Plot hazard scores
-ggforest(model, data = training)
+ggforest(model, data=train)
 
 # Plot gene expression heatmap
 pheatmap(
-  training[order(training$risk_score),][c(features_best)][,2:length(features_best)],
+  train[order(train$risk_score),][c(features_best)][,2:length(features_best)],
   show_rownames=FALSE,
   cluster_rows=F,
   cluster_cols=F
 )
 
 # Compare event_free_survival_days between risk groups
-ggplot(training, aes(x=risk_score_low, y=event_free_survival_days)) + 
+ggplot(train, aes(x=risk_score_low, y=event_free_survival_days)) + 
+  geom_boxplot()
+
+ggplot(test, aes(x=risk_score_low, y=event_free_survival_days)) + 
   geom_boxplot()
 
