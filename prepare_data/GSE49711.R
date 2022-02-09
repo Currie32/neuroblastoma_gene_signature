@@ -63,8 +63,7 @@ correct_data_types <- function(df) {
   df$high_risk <- as.integer(df$high_risk)
   df$death_from_disease <- as.integer(df$death_from_disease)
   df$mycn_status <- as.integer(df$mycn_status)
-  df$inss_stage <- as.factor(df$inss_stage)
-  
+
   # Create dummy columns from inss_stage
   df <- dummy_cols(
     df,
