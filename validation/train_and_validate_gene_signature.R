@@ -125,7 +125,7 @@ train_model <- function(features, df) {
   
   # Train model
   model <- coxph(
-    as.formula(paste("survival ~ ", features_joined)),
+    as.formula(paste("survival_train ~ ", features_joined)),
     data=df,
     na.action=na.pass
   )
@@ -145,25 +145,14 @@ plot_roc_curve <- function(df) {
 }
 
 
-plot_kaplan_meier <- function(training, survival) {
-  
-  fit1 <- survfit(survival ~ risk_score_low, data=training, na.action=na.pass)
-  ggsurvplot(
-    fit = fit1,
-    conf.int=TRUE,
-    pval = TRUE,
-    xlab = "Days", 
-    ylab = "Overall survival probability"
-  )
-}
-
-
 # Load training data
 train <- read.csv(file.path(PATH, "train.csv"))
+test_GSE85047 <- read.csv(file.path(PATH, "test_GSE85047.csv"))
 test_target <- read.csv(file.path(PATH, "test_target.csv"))
 
 # Add under_18_months feature
 train$under_18_months <- is_under_18_months(train)
+test_GSE85047$under_18_months <- is_under_18_months(test_GSE85047)
 test_target$under_18_months <- is_under_18_months(test_target)
 
 # Load gene list
@@ -172,6 +161,7 @@ genes <- colnames(train[, (colnames(train) %in% gene_list$external_gene_name)])
 
 # Create survival for cox regressions
 survival_train <- Surv(train$event_free_survival_days, train$event_free_survival)
+survival_test_GSE85047 <- Surv(test_GSE85047$event_free_survival_days, test_GSE85047$event_free_survival)
 survival_test_target <- Surv(test_target$event_free_survival_days, test_target$event_free_survival)
 
 # Find the combination of features that are most predictive of survival
@@ -184,14 +174,57 @@ model <- train_model(features_best, train)
 train$risk_score <- predict(model, type="lp")
 train$risk_score_low <- train$risk_score < median(train$risk_score)
 
+test_GSE85047$risk_score <- predict(model, test_GSE85047, type="lp")
+test_GSE85047$risk_score_low <- test_GSE85047$risk_score < median(train$risk_score)
+
 test_target$risk_score <- predict(model, test_target, type="lp")
 test_target$risk_score_low <- test_target$risk_score < median(train$risk_score)
 
 plot_roc_curve(train)
+plot_roc_curve(test_GSE85047)
 plot_roc_curve(test_target)
 
-plot_kaplan_meier(train, survival_train)
-plot_kaplan_meier(test, survival_test)
+# Kaplan Meier Train
+fit_train <- survfit(
+  survival_train ~ risk_score_low,
+  data=train,
+  na.action=na.pass
+)
+ggsurvplot(
+  fit = fit_train,
+  conf.int=TRUE,
+  pval = TRUE,
+  xlab = "Days", 
+  ylab = "Overall survival probability"
+)
+
+# Kaplan Meier test_GSE85047
+fit_test_GSE85047 <- survfit(
+  survival_test_GSE85047 ~ risk_score_low,
+  data=test_GSE85047,
+  na.action=na.pass
+)
+ggsurvplot(
+  fit = fit_test_GSE85047,
+  conf.int=TRUE,
+  pval = TRUE,
+  xlab = "Days", 
+  ylab = "Overall survival probability"
+)
+
+# Kaplan Meier test_target
+fit_test_target <- survfit(
+  survival_test_target ~ risk_score_low,
+  data=test_target,
+  na.action=na.pass
+)
+ggsurvplot(
+  fit = fit_test_target,
+  conf.int=TRUE,
+  pval = TRUE,
+  xlab = "Days", 
+  ylab = "Overall survival probability"
+)
 
 # Plot hazard scores
 ggforest(model, data=train)
@@ -208,6 +241,9 @@ pheatmap(
 ggplot(train, aes(x=risk_score_low, y=event_free_survival_days)) + 
   geom_boxplot()
 
-ggplot(test, aes(x=risk_score_low, y=event_free_survival_days)) + 
+ggplot(test_GSE85047, aes(x=risk_score_low, y=event_free_survival_days)) + 
+  geom_boxplot()
+
+ggplot(test_target, aes(x=risk_score_low, y=event_free_survival_days)) + 
   geom_boxplot()
 
