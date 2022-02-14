@@ -133,6 +133,7 @@ load_and_prepare_expression_data <- function(gene_list) {
   return(df_t)
 }
 
+
 patients <- load_and_prepare_patient_data()
 
 # Load differentially expressed genes
