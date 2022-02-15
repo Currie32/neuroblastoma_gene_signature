@@ -5,30 +5,24 @@ library(GEOquery)
 PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
 
 
-load_and_prepare_patient_data <- function(geo_id) {
+prepare_patient_data <- function(gse) {
   
-  # Load GEO data
-  gse <- getGEO(geo_id)[[1]]
-  
-  # Get the patient data
-  patients <- pData(gse)
-  
-  # Clear the row names
-  rownames(patients) <- c()
+  # Extract patient data
+  patients <- gse[["GSE85047_series_matrix.txt.gz"]]@phenoData@data
   
   # Filter to relevant columns
   patients <- patients[c(
     "title",
     "geo_accession",
     "age_at_diagnosis(days):ch1",
-    "event_progression_free:ch1",
-    "profression_free_survival_time(days):ch1",
+    "inss:ch1",
     "mycn_amplification:ch1",
-    "inss:ch1"
+    "event_progression_free:ch1",
+    "profression_free_survival_time(days):ch1"
   )]
   
   patients <- rename_columns(patients)
-  # patients <- correct_data_types(patients)
+  patients <- correct_data_types(patients)
   
   return(patients)
 }
@@ -39,25 +33,37 @@ rename_columns <- function(df) {
   names(df)[names(df) == "title"] <- "sequence_id"
   names(df)[names(df) == "geo_accession"] <- "geo_id"
   names(df)[names(df) == "age_at_diagnosis(days):ch1"] <- "age_at_diagnosis_days"
+  names(df)[names(df) == "inss:ch1"] <- "inss_stage"
+  names(df)[names(df) == "mycn_amplification:ch1"] <- "mycn_amplification"
   names(df)[names(df) == "event_progression_free:ch1"] <- "event_free_survival"
   names(df)[names(df) == "profression_free_survival_time(days):ch1"] <- "event_free_survival_days"
-  names(df)[names(df) == "mycn_amplification:ch1"] <- "mycn_status"
-  names(df)[names(df) == "inss:ch1"] <- "inss_stage"
   
   return(df)
 }
 
-
 correct_data_types <- function(df) {
   
-  # Convert null values to -1, so the feature can be an integer
-  df$mycn_status[df$mycn_status == "N/A"] <- -1
+  # Remove rows with null values
+  df <- df[df$age_at_diagnosis_days != "NA", ]
+  df <- df[df$event_free_survival_days != "NA", ]
+  df <- df[df$mycn_amplification != "NA", ]
+  df <- df[df$event_free_survival != "NA", ]
+  df <- df[df$inss_stage != "NA", ]
   
-  df$male <- as.integer(df$male)
+  # Convert columns to integers
   df$age_at_diagnosis_days <- as.integer(df$age_at_diagnosis_days)
-  df$high_risk <- as.integer(df$high_risk)
-  df$death_from_disease <- as.integer(df$death_from_disease)
-  df$mycn_status <- as.integer(df$mycn_status)
+  df$event_free_survival_days <- as.integer(df$event_free_survival_days)
+  
+  # Update values to 1 or 0
+  df$mycn_amplification <- ifelse(df$mycn_amplification == "yes", 1, 0)
+  df$event_free_survival <- ifelse(df$event_free_survival == "yes", 1, 0)
+  
+  # Update values of inss_stage
+  df$inss_stage[df$inss_stage == "st1"] <- "1"
+  df$inss_stage[df$inss_stage == "st2"] <- "2"
+  df$inss_stage[df$inss_stage == "st3"] <- "3"
+  df$inss_stage[df$inss_stage == "st4"] <- "4"
+  df$inss_stage[df$inss_stage == "st4s"] <- "4S"
   
   # Create dummy columns from inss_stage
   df <- dummy_cols(
@@ -71,54 +77,61 @@ correct_data_types <- function(df) {
 }
 
 
-load_and_prepare_expression_data <- function(gene_list) {
+prepare_expression_data <- function(gse, gene_list) {
   
-  # Load expression data
-  # Downloaded from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE49711
-  df <- read.csv(file.path(PATH, "GSE49711_SEQC_NB_TUC_G_log2.txt"), sep='\t')
+  # Extract the expression data
+  expression_data <- gse[["GSE85047_series_matrix.txt.gz"]]@assayData[["exprs"]]
+  expression_data <- data.frame(expression_data)
   
-  # Filter to genes in the gene list
-  df <- df[df$X00gene_id %in% gene_list,]
+  # Get gene names for expression data
+  genes <- gene_names(gse)
   
-  # Remove duplicate genes
-  df <- df[!duplicated(df$X00gene_id),]
+  # Extract the expression data
+  expression_data <- gse[["GSE85047_series_matrix.txt.gz"]]@assayData[["exprs"]]
+  expression_data <- data.frame(expression_data)
   
-  # Select the genes for future assignment
-  genes <- df$X00gene_id
+  # Remove rows that are missing a gene name
+  expression_data <- expression_data[genes != "",]
+  genes <- genes[genes != ""]
   
-  # Filter to only the expression features
-  df <- df[,grepl("SEQC", colnames(df))]
+  # Remove rows with duplicate genes
+  expression_data <- expression_data[!duplicated(genes),]
+  genes <- genes[!duplicated(genes)]
   
-  # Transpose the expression data
-  df_t <- transpose(df)
+  # Transpose the data to have the genes as columns
+  expression_data_t <- transpose(expression_data)
   
-  # Label the columns with the gene names
-  colnames(df_t) <- genes
+  # Label columns with gene names
+  colnames(expression_data_t) <- genes
   
-  # Undo log2 transformation and Z-transform the expression values
-  df_t <- data.frame(scale(2^df_t))
+  # Filter to genes in gene_list
+  expression_data_t <- expression_data_t[colnames(expression_data_t) %in% gene_list]
   
-  # Add sequence_id
-  df_t$sequence_id <- colnames(df)
-  df_t$sequence_id <- substr(df_t$sequence_id, 1, 10)
+  # Add geo_id for merging with patients data
+  expression_data_t$geo_id <- colnames(expression_data)
   
-  return(df_t)
+  return(expression_data_t)
+}
+
+
+gene_names <- function(df) {
+  
+  feature_data <- gse[["GSE85047_series_matrix.txt.gz"]]@featureData@data
+  genes <- str_split_fixed(feature_data$gene_assignment, " // ", n=3)[,2]
+  
+  return(genes)
 }
 
 
 # Load differentially expressed genes
 gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
 
-# Load the patients' data
-geo_id <- "GSE85047"
-patients <- load_and_prepare_patient_data(geo_id)
+# Load GEO data
+gse <- getGEO("GSE85047")
 
-head(patients)
-
-colSums(is.na(patients))
-
-
-expression_data <- load_and_prepare_expression_data(gene_list$external_gene_name)
+# Prepare datasets for merging
+patients <- prepare_patient_data(gse)
+expression_data <- prepare_expression_data(gse, gene_list$external_gene_name)
 
 # Merge patient data with their expression data
 patients <- merge(
@@ -128,4 +141,4 @@ patients <- merge(
 )
 
 # Save patient data
-write.csv(patients, file.path(PATH, "GSE49711.csv"), row.names=FALSE)
+write.csv(patients, file.path(PATH, "GSE85047.csv"), row.names=FALSE)
