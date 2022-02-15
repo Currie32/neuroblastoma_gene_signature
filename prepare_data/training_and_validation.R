@@ -68,12 +68,12 @@ add_missing_features <- function(train, df) {
 }
 
 
-correlated_genes <- function(genes, df) {
+add_correlated_genes <- function(genes, df) {
   
   correlations <- cor(df[colnames(df) %in% genes & colSums(df == 0) != length(df)])
   correlations <- abs(data.frame(correlations))
   
-  corr_threshold <- 0.7
+  corr_threshold <- 0.75
   max_corr <- corr_threshold
   max_feature <- ""
   max_feature_paired <- ""
@@ -102,7 +102,7 @@ correlated_genes <- function(genes, df) {
     df[joined_feature] <- rowMeans(df[c(max_feature, max_feature_paired)])
     df <- df[!colnames(df) %in% c(max_feature, max_feature_paired)]
     
-    correlated_genes(genes, df)
+    add_correlated_genes(genes, df)
   }
   else {
     return(df)
@@ -110,13 +110,28 @@ correlated_genes <- function(genes, df) {
 }
 
 
-average_correlated_genes <- function(genes, df, df_corr) {
+average_correlated_genes_train <- function(genes, df, train) {
   
-  genes_to_average <- colnames(df_corr[!colnames(df_corr) %in% colnames(df)])
-  
-  for (genes_correlated in genes_to_average) {
+  for (genes_correlated in genes) {
     genes_correlated_split <- strsplit(genes_correlated, '_')[[1]]
-    df[genes_correlated] <- scale(rowMeans(df[genes_correlated_split]))
+    df[genes_correlated] <- scale(rowMeans(train[genes_correlated_split]))
+  }
+  
+  return(df)
+}
+
+
+average_correlated_genes <- function(genes, df) {
+
+  for (genes_correlated in genes) {
+    genes_correlated_split <- strsplit(genes_correlated, '_')[[1]]
+    
+    if (all(df[genes_correlated_split] == 0)) {
+      df[genes_correlated] <- 0
+    }
+    else {
+      df[genes_correlated] <- scale(rowMeans(df[genes_correlated_split]))
+    }
   }
   
   return(df)
@@ -148,15 +163,19 @@ GSE62564 <- format_GSE_patient_data(
 
 # Create training dataset
 train <- combine_datasets(GSE49711, GSE62564)
-train_corr <- correlated_genes(genes, train)
-train_corr <- average_correlated_genes(genes, train, train_corr)
+train_corr <- add_correlated_genes(genes, train)
+
+correlated_genes <- colnames(train_corr)[!colnames(train_corr) %in% colnames(train)]
+
+train_corr <- average_correlated_genes_train(correlated_genes, train_corr, train)
+
 
 # Add missing features to testing datasets
-GSE85047 <- add_missing_features(train_corr, GSE85047)
-target_2018 <- add_missing_features(train_corr, target_2018)
+GSE85047_corr <- add_missing_features(train, GSE85047)
+target_2018_corr <- add_missing_features(train, target_2018)
 
-GSE85047_corr <- average_correlated_genes(genes, GSE85047, GSE85047_corr)
-target_2018_corr <- average_correlated_genes(genes, target_2018, target_2018_corr)
+GSE85047_corr <- average_correlated_genes(correlated_genes, GSE85047_corr)
+target_2018_corr <- average_correlated_genes(correlated_genes, target_2018_corr)
 
 # Save datasets
 write.csv(train_corr, file.path(PATH, "train.csv"), row.names=FALSE)

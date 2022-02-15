@@ -55,7 +55,6 @@ rename_columns <- function(df) {
   return(df)
 }
 
-
 correct_data_types <- function(df) {
   
   # Identify the male patients
@@ -117,13 +116,13 @@ load_and_prepare_expression_data <- function(gene_list) {
   df <- df[,grepl("TARGET", colnames(df))]
   
   # Transpose the expression data
-  df_t <- transpose(df)
+  df_t <- t(df)
   
   # Label the columns with the gene names
   colnames(df_t) <- genes
   
   # Undo log2 transformation and Z-transform the expression values
-  df_t <- data.frame(scale(2^df_t))
+  df_t <- data.frame(df_t)
   
   # Add sequence_id
   df_t$sequence_id <- colnames(df)
@@ -150,5 +149,3 @@ patients <- merge(
 
 # Save patient data
 write.csv(patients, file.path(PATH, "target_2018.csv"), row.names=FALSE)
-
-
