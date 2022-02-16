@@ -193,6 +193,35 @@ plot_roc_curve <- function(df, risk_score) {
   auc(precrec_obj)
 }
 
+
+compare_auc_values <- function(df, samples) {
+  
+  auc_scores <- vector()
+  auc_scores_baseline <- vector()
+  
+  for (i in 1:samples) {
+    df_sample <- df[sample(nrow(df), length(df), replace=TRUE), ]
+    
+    precrec_obj <- evalmod(
+      scores=df_sample$prognostic_score,
+      labels=df_sample$event_free_survival,
+    )
+    precrec_obj_baseline <- evalmod(
+      scores=df_sample$risk_score_baseline,
+      labels=df_sample$event_free_survival,
+    )
+    
+    auc_score <- auc(precrec_obj)$aucs[1]
+    auc_scores <- append(auc_scores, auc_score)
+    
+    auc_score_baseline <- auc(precrec_obj_baseline)$aucs[1]
+    auc_scores_baseline <- append(auc_scores_baseline, auc_score_baseline)
+  }
+  
+  t.test(auc_scores, auc_scores_baseline, alternative="greater")
+}
+
+
 # Load training data
 train <- read.csv(file.path(PATH, "train.csv"))
 test_GSE85047 <- read.csv(file.path(PATH, "test_GSE85047.csv"))
@@ -230,7 +259,7 @@ test_GSE85047$risk_score_low <- test_GSE85047$risk_score < median(train$risk_sco
 test_target$risk_score <- predict(model, test_target)
 test_target$risk_score_low <- test_target$risk_score < median(train$risk_score)
 
-# Baseline
+# Create baseline model risk scores
 model_baseline <- baseline_model(train, survival_train)
 train$risk_score_baseline <- predict(model_baseline, train, type="lp")
 train$risk_score_low_baseline <- train$risk_score_baseline < median(train$risk_score_baseline)
@@ -250,34 +279,6 @@ plot_roc_curve(train, "risk_score_baseline")
 plot_roc_curve(test_GSE85047, "risk_score_baseline")
 plot_roc_curve(test_target, "risk_score_baseline")
 
-auc_scores <- vector()
-auc_scores_baseline <- vector()
-
-for (i in 1:500) {
-  df_sample <- test_GSE85047[sample(nrow(test_GSE85047), length(test_GSE85047), replace=TRUE), ]
-  
-  precrec_obj <- evalmod(
-    scores=df_sample$prognostic_score,
-    labels=df_sample$event_free_survival,
-  )
-  precrec_obj_baseline <- evalmod(
-    scores=df_sample$risk_score_baseline,
-    labels=df_sample$event_free_survival,
-  )
-  
-  auc_score <- auc(precrec_obj)$aucs[1]
-  auc_scores <- append(auc_scores, auc_score)
-  
-  auc_score_baseline <- auc(precrec_obj_baseline)$aucs[1]
-  auc_scores_baseline <- append(auc_scores_baseline, auc_score_baseline)
-}
-
-t.test(auc_scores, auc_scores_baseline, alternative="greater")
-
-mean(auc_scores > auc_scores_baseline)
-
-hist(auc_scores)
-hist(auc_scores_baseline)
 
 # Kaplan Meier Train
 fit_train <- survfit(
@@ -321,10 +322,12 @@ ggsurvplot(
   ylab = "Overall survival probability"
 )
 
+# Train model with risk score and pheontype features
 features_significant <- multivariate_cox_regression(c('risk_score'), survival_train, train, TRUE, FALSE)
 features_best <- aic_feature_selection(features_significant, survival_train, train, '')
 model <- train_model(features_best, train)
 
+# Create prognostic score (i.e. the more advanced risk score)
 train$prognostic_score <- predict(model, train)
 train$prognostic_score_low <- train$prognostic_score < median(train$prognostic_score)
 
@@ -334,12 +337,10 @@ test_GSE85047$prognostic_score_low <- test_GSE85047$prognostic_score < median(tr
 test_target$prognostic_score <- predict(model, test_target)
 test_target$prognostic_score_low <- test_target$prognostic_score < median(train$prognostic_score)
 
+# Plot results
 plot_roc_curve(train, "prognostic_score")
 plot_roc_curve(test_GSE85047, "prognostic_score")
 plot_roc_curve(test_target, "prognostic_score")
-
-
-
 
 # Kaplan Meier Train
 fit_train <- survfit(
@@ -387,18 +388,26 @@ ggsurvplot(
 ggforest(model, data=train)
 ggforest(model_baseline, data=train)
 
+# Check if difference in AUC scores is significant
+# (between baseline and prognostic models)
+compare_auc_values(test_GSE85047, 500)
+compare_auc_values(test_target, 500)
+
+# Plot gene expression heatmap
+pheatmap(
+  train[order(train$risk_score),][colnames(train) %in% genes_best],
+  show_rownames=FALSE,
+  cluster_rows=F,
+  cluster_cols=F,
+  breaks=seq(-3, 3, by = 0.1),
+)
+
+
+# Check number of high and low prognostic risk scores
 table(train$prognostic_score_low)
 table(test_GSE85047$prognostic_score_low)
 table(test_target$prognostic_score_low)
 
-
-# Plot gene expression heatmap
-pheatmap(
-  train[order(train$risk_score),][c(features_best)][,2:length(features_best)],
-  show_rownames=FALSE,
-  cluster_rows=F,
-  cluster_cols=F
-)
 
 # Compare event_free_survival_days between risk groups
 ggplot(train, aes(x=prognostic_score_low, y=event_free_survival_days)) + 
