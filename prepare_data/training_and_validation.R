@@ -73,7 +73,7 @@ add_correlated_genes <- function(genes, df) {
   correlations <- cor(df[colnames(df) %in% genes & colSums(df == 0) != length(df)])
   correlations <- abs(data.frame(correlations))
   
-  corr_threshold <- 0.75
+  corr_threshold <- 0.9
   max_corr <- corr_threshold
   max_feature <- ""
   max_feature_paired <- ""

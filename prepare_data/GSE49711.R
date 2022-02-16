@@ -1,4 +1,3 @@
-library(data.table)
 library(GEOquery)
 
 
@@ -96,7 +95,7 @@ load_and_prepare_expression_data <- function(gene_list) {
   df <- df[,grepl("SEQC", colnames(df))]
   
   # Transpose the expression data
-  df_t <- transpose(df)
+  df_t <- t(df)
   
   # Label the columns with the gene names
   colnames(df_t) <- genes

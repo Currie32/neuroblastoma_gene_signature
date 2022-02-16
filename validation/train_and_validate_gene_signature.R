@@ -10,6 +10,7 @@ library(survminer)
 
 
 PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
+P_VALUE = 0.01
 
 
 is_under_18_months <- function(df) {
@@ -46,14 +47,14 @@ univariate_cox_regression <- function(genes, df) {
   
   # Filter to p-values that are statistically significant
   p_values <- data.frame(genes, p_values)
-  candidate_genes <- p_values[p_values$p_values < 0.005,]$genes
+  candidate_genes <- p_values[p_values$p_values < P_VALUE,]$genes
   length(candidate_genes)
   
   return(candidate_genes)
 }
 
 
-multivariate_cox_regression <- function(candidate_genes, survival, df, phenotype_features, p_value) {
+multivariate_cox_regression <- function(candidate_genes, survival, df, phenotype_features, interaction) {
   #' Find which features (genes and patient traits) are statistically
   #' significant in combination
   #' 
@@ -77,6 +78,13 @@ multivariate_cox_regression <- function(candidate_genes, survival, df, phenotype
       na.action=na.pass
     )
   }
+  else if (interaction) {
+    model <- coxph(
+      as.formula(paste("survival_train ~ (", canadidate_genes_joined, ")^2")),
+      data=train,
+      na.action=na.pass
+    )
+  }
   else {
     model <- coxph(
       as.formula(paste("survival ~ ", canadidate_genes_joined)),
@@ -88,10 +96,12 @@ multivariate_cox_regression <- function(candidate_genes, survival, df, phenotype
   # Find the significant features
   result <- summary(model)
   p_values <- result$coefficients[,5]
-  significant_features <- names(p_values[p_values < p_value])
+  significant_features <- names(p_values[p_values < P_VALUE])
   
   return(significant_features)
 }
+
+
 
 
 aic_feature_selection <- function(features, survival, df, delimiter) {
@@ -127,23 +137,6 @@ aic_feature_selection <- function(features, survival, df, delimiter) {
   return(best_model_features)
 }
 
-top_model_baseline <- coxph(
-  survival_train ~  under_18_months + mycn_amplification + inss_stage_2 + inss_stage_3 + inss_stage_4 + inss_stage_4S,
-  data=train,
-  na.action=na.pass
-)
-summary(top_model_baseline)
-
-
-models_baseline <- dredge(top_model_baseline)
-features_baseline <- rownames(dredge_results_baseline$coefmat.full)
-dredge_results_baseline <- summary(model.avg(models_baseline, fit=TRUE))
-best_model_baseline_features_integers <- rownames(dredge_results_baseline$msTable)[1]
-best_model_baseline_features_integers <- as.integer(strsplit(best_model_baseline_features_integers, '/')[[1]])
-best_model_baseline_features <- features_baseline[as.integer(strsplit(as.character(best_model_baseline_features_integers), split="")[[1]])]
-
-model_baseline <- train_model(best_model_baseline_features, train)
-
 
 train_model <- function(features, df) {
   
@@ -157,6 +150,36 @@ train_model <- function(features, df) {
   )
   
   return(model)
+}
+
+
+baseline_model <- function(df, survival) {
+  
+  # Fit the top model
+  top_model_baseline <- coxph(
+    survival_train ~  under_18_months + mycn_amplification + inss_stage_2 + inss_stage_3 + inss_stage_4 + inss_stage_4S,
+    data=df,
+    na.action=na.pass
+  )
+  
+  # "Dredge" all subsets of the top model
+  models_baseline <- dredge(top_model_baseline)
+  
+  # Get the dredge results
+  dredge_results_baseline <- summary(model.avg(models_baseline, fit=TRUE))
+  
+  # Identify the features of the dredged models
+  features_baseline <- rownames(dredge_results_baseline$coefmat.full)
+  
+  # Identify the best combination of features
+  best_model_baseline_features_integers <- rownames(dredge_results_baseline$msTable)[1]
+  best_model_baseline_features_integers <- as.integer(strsplit(best_model_baseline_features_integers, '/')[[1]])
+  best_model_baseline_features <- features_baseline[as.integer(strsplit(as.character(best_model_baseline_features_integers), split="")[[1]])]
+  
+  # Train a model using the best combination of features
+  model_baseline <- train_model(best_model_baseline_features, train)
+  
+  return(model_baseline)
 }
 
 
@@ -180,11 +203,8 @@ train$under_18_months <- is_under_18_months(train)
 test_GSE85047$under_18_months <- is_under_18_months(test_GSE85047)
 test_target$under_18_months <- is_under_18_months(test_target)
 
-# Load gene list
-gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
-genes <- colnames(train[, (colnames(train) %in% gene_list$external_gene_name)])
-
-genes <- colnames(train)[14:length(colnames(train))-1]
+# Get the genes from the training dataset
+genes <- colnames(train)[14:length(colnames(train)) - 1]
 
 # Create survival for cox regressions
 survival_train <- Surv(train$event_free_survival_days, train$event_free_survival)
@@ -193,22 +213,12 @@ survival_test_target <- Surv(test_target$event_free_survival_days, test_target$e
 
 # Find the combination of features that are most predictive of survival
 genes_candidate <- univariate_cox_regression(genes, train)
-genes_significant <- multivariate_cox_regression(genes_candidate, survival_train, train[genes], FALSE, 0.005)
-genes_best <- aic_feature_selection(c("CD9", "DLG2", "HEBP2", "HSD17B12", "NXT2", "TXNDC5", "NUDT10_NUDT11", "CD9:NXT2", "HSD17B12:RACK1", "NXT2:TXNDC5", "TXNDC5:RACK1"), survival_train, train, '/')
+genes_significant <- multivariate_cox_regression(genes_candidate, survival_train, train[genes], FALSE, FALSE)
+genes_interaction <- multivariate_cox_regression(genes_significant, survival_train, train[genes], FALSE, TRUE)
+genes_best <- aic_feature_selection(genes_interaction, survival_train, train, '')
 
-genes_best <- append(genes_best, "RACK1")
-
+# Train the model using the best gene set
 model <- train_model(genes_best, train)
-
-model2 <- coxph(
-  survival_train ~ (CD9 + DLG2 + HEBP2 + HSD17B12 + NXT2 + RGS10 + TXNDC5 + VAT1L + RACK1 + NUDT10_NUDT11)^2,
-  data=train,
-  na.action=na.pass
-)
-summary(model2)
-
-
-model <- train_model(c("CD9", "DLG2", "HEBP2", "HSD17B12", "NUDT10_NUDT11", "NXT2", "RACK1", "TXNDC5", "CD9:NXT2", "HSD17B12:RACK1", "RACK1:TXNDC5", "NXT2:TXNDC5"), train)
 
 # Create risk scores
 train$risk_score <- predict(model, train)
@@ -221,6 +231,7 @@ test_target$risk_score <- predict(model, test_target)
 test_target$risk_score_low <- test_target$risk_score < median(train$risk_score)
 
 # Baseline
+model_baseline <- baseline_model(train, survival_train)
 train$risk_score_baseline <- predict(model_baseline, train, type="lp")
 train$risk_score_low_baseline <- train$risk_score_baseline < median(train$risk_score_baseline)
 
@@ -238,8 +249,6 @@ plot_roc_curve(test_target, "risk_score")
 plot_roc_curve(train, "risk_score_baseline")
 plot_roc_curve(test_GSE85047, "risk_score_baseline")
 plot_roc_curve(test_target, "risk_score_baseline")
-
-qwe <- sample(test_GSE85047, 10, replace=TRUE)
 
 auc_scores <- vector()
 auc_scores_baseline <- vector()
@@ -264,8 +273,6 @@ for (i in 1:500) {
 }
 
 t.test(auc_scores, auc_scores_baseline, alternative="greater")
-
-concordance(model_baseline, data=test_target)
 
 mean(auc_scores > auc_scores_baseline)
 
@@ -314,7 +321,7 @@ ggsurvplot(
   ylab = "Overall survival probability"
 )
 
-features_significant <- multivariate_cox_regression(c('risk_score'), survival_train, train, TRUE, 0.05)
+features_significant <- multivariate_cox_regression(c('risk_score'), survival_train, train, TRUE, FALSE)
 features_best <- aic_feature_selection(features_significant, survival_train, train, '')
 model <- train_model(features_best, train)
 
@@ -378,12 +385,11 @@ ggsurvplot(
 
 # Plot hazard scores
 ggforest(model, data=train)
-ggforest(model, data=test_GSE85047)
 ggforest(model_baseline, data=train)
 
 table(train$prognostic_score_low)
-table(test_GSE85047$risk_score_low_baseline)
-
+table(test_GSE85047$prognostic_score_low)
+table(test_target$prognostic_score_low)
 
 
 # Plot gene expression heatmap

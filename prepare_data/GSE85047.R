@@ -1,4 +1,3 @@
-library(data.table)
 library(GEOquery)
 
 
@@ -79,10 +78,6 @@ correct_data_types <- function(df) {
 
 prepare_expression_data <- function(gse, gene_list) {
   
-  # Extract the expression data
-  expression_data <- gse[["GSE85047_series_matrix.txt.gz"]]@assayData[["exprs"]]
-  expression_data <- data.frame(expression_data)
-  
   # Get gene names for expression data
   genes <- gene_names(gse)
   
@@ -99,7 +94,7 @@ prepare_expression_data <- function(gse, gene_list) {
   genes <- genes[!duplicated(genes)]
   
   # Transpose the data to have the genes as columns
-  expression_data_t <- transpose(expression_data)
+  expression_data_t <- data.frame(t(expression_data))
   
   # Label columns with gene names
   colnames(expression_data_t) <- genes

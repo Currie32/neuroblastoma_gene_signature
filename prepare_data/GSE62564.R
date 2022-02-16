@@ -1,5 +1,4 @@
 library("biomaRt")
-library(data.table)
 library(GEOquery)
 
 
@@ -39,8 +38,7 @@ load_and_prepare_expression_data <- function(gene_list){
   )
   
   # Convert corrupt data to NA, then filter out rows will NA values
-  expression_data <- expression_data %>% dplyr::na_if(-6.665)
-  expression_data <- expression_data[rowSums(is.na(expression_data2)) == 0,]
+  expression_data <- expression_data[rowSums(is.na(expression_data)) == 0,]
   
   # Add external_gene_name to expression data
   expression_data <- merge(
@@ -63,7 +61,7 @@ load_and_prepare_expression_data <- function(gene_list){
   expression_data <- data.frame(scale(2^expression_data))
   
   # Transpose the expression data
-  expression_data_t <- transpose(expression_data)
+  expression_data_t <- data.frame(t(expression_data))
   
   # Label the columns with the gene names
   colnames(expression_data_t) <- genes
@@ -160,7 +158,7 @@ gene_list <- merge(gene_list, join_table, on="ensembl_gene_id_version")
 expression_data <- load_and_prepare_expression_data(gene_list)
 
 # Get patient data
-patients <- load_and_prepare_patient_data(gse)
+patients <- load_and_prepare_patient_data()
 
 # Merge the patient data with their expression data
 patients <- merge(
