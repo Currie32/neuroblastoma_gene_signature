@@ -73,7 +73,7 @@ add_correlated_genes <- function(genes, df) {
   correlations <- cor(df[colnames(df) %in% genes & colSums(df == 0) != length(df)])
   correlations <- abs(data.frame(correlations))
   
-  corr_threshold <- 0.9
+  corr_threshold <- 0.8
   max_corr <- corr_threshold
   max_feature <- ""
   max_feature_paired <- ""
@@ -142,6 +142,7 @@ GSE49711 <- read.csv(file.path(PATH, "GSE49711.csv"))
 GSE62564 <- read.csv(file.path(PATH, "GSE62564.csv"))
 GSE85047 <- read.csv(file.path(PATH, "GSE85047.csv"))
 target_2018 <- read.csv(file.path(PATH, "target_2018.csv"))
+wilms_tumor <- read.csv(file.path(PATH, "wilms_tumor.csv"))
 
 # Load differentially expressed genes
 gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
@@ -173,11 +174,14 @@ train_corr <- average_correlated_genes_train(correlated_genes, train_corr, train
 # Add missing features to testing datasets
 GSE85047_corr <- add_missing_features(train, GSE85047)
 target_2018_corr <- add_missing_features(train, target_2018)
+wilms_tumor_corr <- add_missing_features(train, wilms_tumor)
 
 GSE85047_corr <- average_correlated_genes(correlated_genes, GSE85047_corr)
 target_2018_corr <- average_correlated_genes(correlated_genes, target_2018_corr)
+wilms_tumor_corr <- average_correlated_genes(correlated_genes, wilms_tumor_corr)
 
 # Save datasets
 write.csv(train_corr, file.path(PATH, "train.csv"), row.names=FALSE)
 write.csv(GSE85047_corr, file.path(PATH, "test_GSE85047.csv"), row.names=FALSE)
 write.csv(target_2018_corr, file.path(PATH, "test_target.csv"), row.names=FALSE)
+write.csv(wilms_tumor_corr, file.path(PATH, "test_wilms_tumor.csv"), row.names=FALSE)

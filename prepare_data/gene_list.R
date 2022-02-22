@@ -1,24 +1,26 @@
 library(data.table)
 
+PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
+
 # Load the gene list datasets and only the required columns
 edge_r <- data.frame(fread(
-  "../data/EdgeR.csv",
+  file.path(PATH, "EdgeR.csv"),
   select=c("external_gene_name", "ensembl_gene_id_version")
 ))
 
 final_gene_list <- read.csv(
-  "../data/FinalGeneList_1.5_fold_NoTrkA.txt",
+  file.path(PATH, "FinalGeneList_1.5_fold_NoTrkA.txt"),
   col.names=c("ensembl_gene_id_version", "external_gene_name"),
   sep="\t"
 )
 
 de_seq2 <- data.frame(fread(
-  "../data/DESeq2.csv",
+  file.path(PATH, "DESeq2.csv"),
   select=c("external_gene_name", "ensembl_gene_id_version")
 ))
 
 limma_voom <- data.frame(fread(
-  "../data/limma-voom.csv",
+  file.path(PATH, "limma-voom.csv"),
   select=c("external_gene_name", "ensembl_gene_id_version")
 ))
 
@@ -48,4 +50,4 @@ gene_list <- gene_list[!duplicated(gene_list), ]
 names(gene_list)[names(gene_list) == "ensembl_gene_id_version"] <- "ensembl_gene_id"
 
 # Save file
-write.csv(gene_list, "../data/gene_list.csv", row.names=FALSE)
+write.csv(gene_list, file.path(PATH, "gene_list.csv"), row.names=FALSE)

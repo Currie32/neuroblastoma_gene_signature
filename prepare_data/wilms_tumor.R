@@ -1,12 +1,12 @@
-PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
+PATH <- "~/Downloads/wt_target_2018_pub/"
 
 
 load_and_prepare_patient_data <- function() {
-  
-  # Load header row
+
   headers <- read.csv(
     file.path(PATH, "data_clinical_patient.txt"),
     nrows = 1,
+    header=F,
     sep="\t"
   )
   # Load data, but skip first five rows since they do not contain the data
@@ -16,19 +16,16 @@ load_and_prepare_patient_data <- function() {
     header=F,
     sep="\t"
   )
-  # Rename the columns using the headers
+  
   colnames(patients) <- headers
   
-  # Filter to relevant columns
   patients <- patients[c(
-    "#Identifier to uniquely specify a patient.",
+    "#Patient Identifier",
     "Sex",
-    "Age at which a condition or disease was first diagnosed.",
-    "Staging according to the International Neuroblastoma Staging System",
-    "Risk group.",
-    "Tumor Sample Histology",
-    "Event Free Survival Censored",
-    "EFS time."
+    "Diagnosis Age (days)",
+    "Neoplasm American Joint Committee on Cancer Clinical Group Stage",
+    "Event Type",
+    "Time To Event (days)"
   )]
   
   patients <- rename_columns(patients)
@@ -40,17 +37,16 @@ load_and_prepare_patient_data <- function() {
 
 rename_columns <- function(df) {
   
-  names(df)[names(df) == "#Identifier to uniquely specify a patient."] <- "sequence_id"
+  names(df)[names(df) == "#Patient Identifier"] <- "sequence_id"
   names(df)[names(df) == "Sex"] <- "male"
-  names(df)[names(df) == "Age at which a condition or disease was first diagnosed."] <- "age_at_diagnosis_days"
-  names(df)[names(df) == "Staging according to the International Neuroblastoma Staging System"] <- "inss_stage"
-  names(df)[names(df) == "Risk group."] <- "high_risk"
-  names(df)[names(df) == "Tumor Sample Histology"] <- "favourable"
-  names(df)[names(df) == "Event Free Survival Censored"] <- "event_free_survival"
-  names(df)[names(df) == "EFS time."] <- "event_free_survival_days"
+  names(df)[names(df) == "Diagnosis Age (days)"] <- "age_at_diagnosis_days"
+  names(df)[names(df) == "Neoplasm American Joint Committee on Cancer Clinical Group Stage"] <- "inss_stage"
+  names(df)[names(df) == "Event Type"] <- "event_free_survival"
+  names(df)[names(df) == "Time To Event (days)"] <- "event_free_survival_days"
   
   return(df)
 }
+
 
 correct_data_types <- function(df) {
   
@@ -60,15 +56,13 @@ correct_data_types <- function(df) {
   df$male <- as.integer(df$male)
   
   # Update values of inss_stage
-  df$inss_stage[df$inss_stage == "Stage 1"] <- "1"
-  df$inss_stage[df$inss_stage == "Stage 2a"] <- "2"
-  df$inss_stage[df$inss_stage == "Stage 2b"] <- "2"
-  df$inss_stage[df$inss_stage == "Stage 3"] <- "3"
-  df$inss_stage[df$inss_stage == "Stage 4"] <- "4"
-  df$inss_stage[df$inss_stage == "Stage 4s"] <- "4S"
-  
+  df$inss_stage[df$inss_stage == "I"] <- "1"
+  df$inss_stage[df$inss_stage == "II"] <- "2"
+  df$inss_stage[df$inss_stage == "III"] <- "3"
+  df$inss_stage[df$inss_stage == "IV"] <- "4"
+
   # Drop rows with an unknown inss_stage value
-  df <- df[df$inss_stage != "Unknown",]
+  df <- df[!df$inss_stage %in% c("", "II/V", "III/V", "IIIB", "IIIB/V", "IV/V", "U", "V"),]
   
   # Create dummy columns from inss_stage
   df <- dummy_cols(
@@ -78,17 +72,28 @@ correct_data_types <- function(df) {
     remove_selected_columns=TRUE
   )
   
-  # Set high risk values to 1, all else is 0
-  df$high_risk <- ifelse(df$high_risk == "High Risk", 1, 0)
-  
-  # Set favourable values to 1, all else is 0
-  df$favourable <- ifelse(df$favourable == "Favourable", 1, 0)
-  
-  # Drop rows with a null event_free_survival value
-  df <- df[!is.na(df$event_free_survival),]
+  df$event_free_survival[df$event_free_survival == "None"] <- 1
+  df$event_free_survival[df$event_free_survival %in% c("Progression", "Relapse")] <- 0
   
   return(df)
 }
+
+df <- read.csv(
+  file.path(PATH, "data_mrna_seq_rpkm_zscores_ref_all_samples.txt"),
+  sep="\t"
+)
+df <- df[df$Hugo_Symbol %in% gene_list$external_gene_name,]
+df <- df[!duplicated(df$Hugo_Symbol),]
+genes <- df$Hugo_Symbol
+df <- df[,grepl("TARGET", colnames(df))]
+df_t <- t(df)
+colnames(df_t) <- genes
+df_t <- data.frame(df_t)
+df_t$sequence_id <- colnames(df)
+df_t$sequence_id <- gsub("\\.", "-", df_t$sequence_id)
+df_t$sequence_id <- substr(df_t$sequence_id, 1, 16)
+
+df
 
 
 load_and_prepare_expression_data <- function(gene_list) {
@@ -129,11 +134,10 @@ load_and_prepare_expression_data <- function(gene_list) {
   return(df_t)
 }
 
+# Load differentially expressed genes
+gene_list <- read.csv("~/Imperial/neuroblastoma_gene_signature/data/gene_list.csv")
 
 patients <- load_and_prepare_patient_data()
-
-# Load differentially expressed genes
-gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
 
 expression_data <- load_and_prepare_expression_data(gene_list$external_gene_name)
 
@@ -144,5 +148,4 @@ patients <- merge(
   on="sequence_id",
 )
 
-# Save patient data
-write.csv(patients, file.path(PATH, "target_2018.csv"), row.names=FALSE)
+write.csv(patients, "~/Imperial/neuroblastoma_gene_signature/data/wilms_tumor.csv", row.names=FALSE)
