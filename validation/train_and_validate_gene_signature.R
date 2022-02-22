@@ -355,7 +355,7 @@ genes <- genes[!genes %in% c("TXNDC5")]
 genes_candidate <- univariate_cox_regression(genes, train)
 genes_significant <- multivariate_cox_regression(genes_candidate, survival_train, train, FALSE, FALSE)
 genes_interaction <- multivariate_cox_regression(genes_significant, survival_train, train, FALSE, TRUE)
-genes_best <- aic_feature_selection(genes_significant, survival_train, train_split, '/')
+genes_best <- aic_feature_selection(genes_interaction, survival_train, train_split, '')
 genes_best <- genes_best[!genes_best %in% c(
   "HEBP2", "TXNDC5", "NXT2:TXNDC5", "HEBP2:RACK1", "RACK1:TXNDC5"
   )]
@@ -368,7 +368,7 @@ model <- train_model(genes_best, train)
 
 # Train model
 model <- coxph(
-  survival_train ~ CD9:strata(tgroup) + DLG2:strata(tgroup) + HSD17B12 + NUDT10_NUDT11 + NXT2:strata(tgroup) + PPIA + RACK1,
+  survival_train ~ CD9:strata(tgroup) + DLG2 + HEBP2:strata(tgroup) + HSD17B12 + NUDT10_NUDT11 + CD9:ZNF732 + DLG2:NUDT10_NUDT11,
   data=train_split,
   na.action=na.pass
 )
