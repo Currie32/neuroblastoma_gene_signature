@@ -7,6 +7,7 @@ library(precrec)
 library(rms)
 library(stringr)
 library(survival)
+library(survivalROC)
 library(survminer)
 
 
@@ -17,6 +18,15 @@ P_VALUE = 0.01
 # the proportional hazards are consistent over time. More info: 
 # https://cran.r-project.org/web/packages/survival/vignettes/timedep.pdf
 CUT_DAY <- c(420)
+
+# Names of the predicted risk scores
+RISK_SCORES <- c(
+  "risk_score_baseline",
+  "risk_score_no_interaction",
+  "risk_score_interaction",
+  "prognostic_score_no_interaction",
+  "prognostic_score_interaction"
+)
 
 
 load_training_data <- function() {
@@ -376,32 +386,15 @@ prognostic_model <- function(train, train_survival, risk_score) {
 }
 
 
-compare_risk_scores <- function(data) {
-  
-  # Names of the predicted risk scores
-  risk_scores <- c(
-    "risk_score_baseline",
-    "risk_score_no_interaction",
-    "risk_score_interaction",
-    "prognostic_score_no_interaction",
-    "prognostic_score_interaction"
-  )
-
-  # Names of the datasets
-  data_names <-  c(
-    "train", "GSE85047", "target", "E_TABM-38", "wilms_tumor"
-  )
+compare_risk_scores <- function(data, data_names) {
   
   results <- list()
   
-  for (risk_score in risk_scores) {
-    
-    print(risk_score)
+  for (risk_score in RISK_SCORES) {
     
     auc_scores <- c()
     
     for (ii in seq(length(data))) {
-      print(ii)
       precrec_obj <- evalmod(
         scores=data[[ii]][risk_score],
         labels=data[[ii]]$event_free_survival,
@@ -420,8 +413,6 @@ compare_risk_scores <- function(data) {
     cluster_cols=F,
     display_numbers=T
   )
-  
-  return(results)
 }
 
 
@@ -492,6 +483,82 @@ compare_auc_values <- function(data, samples) {
   }
   
   t.test(auc_scores, auc_scores_baseline, alternative="greater")
+}
+
+
+evaluate_validation_datasets_combinations <- function(results) {
+  
+  # Identify the matching columns between datasets so that
+  # they can be concatenated
+  matching_columns <- colnames(results$validation[[1]])[
+    (colnames(results$validation[[1]]) %in% colnames(results$validation[[2]]))
+    & (colnames(results$validation[[1]]) %in% colnames(results$validation[[3]]))
+  ]
+  
+  # Add the different combinations of validation datasets to a list
+  validation_combos <- list()
+  validation_combos[[1]] <- results$validation[[1]][matching_columns]
+  validation_combos[[2]] <- results$validation[[2]][matching_columns]
+  validation_combos[[3]] <- results$validation[[3]][matching_columns]
+  validation_combos[[4]] <- rbind(validation[[1]], validation[[2]])
+  validation_combos[[5]] <- rbind(validation[[1]], validation[[3]])
+  validation_combos[[6]] <- rbind(validation[[2]], validation[[3]])
+  validation_combos[[7]] <- rbind(validation[[1]], validation[[2]], validation[[3]])
+  
+  # Names of the datasets in each combination
+  validation_combos_names <- c(
+    "GSE85047", "target", "E-TABM-38",
+    "GSE85047_target", "GSE85047_E-TABM-38", "target_E-TABM-38",
+    "all"
+  )
+  
+  # Create a heatmap to compare the AUC scores across the
+  # combination of datasets and risk scores
+  compare_risk_scores(validation_combos, validation_combos_names)
+}
+
+
+plot_time_dependent_roc_curves <- function(data, risk_score) {
+  
+  roc_object_1 <- survivalROC(data$event_free_survival_days, 
+                              data$event_free_survival, 
+                              data[[risk_score]],
+                              predict.time = 365,
+                              method = 'KM')
+  roc_object_3 <- survivalROC(data$event_free_survival_days, 
+                              data$event_free_survival, 
+                              data[[risk_score]],
+                              predict.time = 365*3,
+                              method = 'KM')
+  roc_object_5 <- survivalROC(data$event_free_survival_days, 
+                              data$event_free_survival, 
+                              data[[risk_score]],
+                              predict.time = 365*5,
+                              method = 'KM')
+  
+  df1 <- data.frame(fp=roc_object_1$FP, tp=roc_object_1$TP)
+  df3 <- data.frame(fp=roc_object_3$FP, tp=roc_object_3$TP)
+  df5 <- data.frame(fp=roc_object_5$FP, tp=roc_object_5$TP)
+  
+  auc_label1 <- sprintf('AUC (1Y) = %.4f', roc_object_1$AUC)
+  auc_label3 <- sprintf('AUC (3Y) = %.4f', roc_object_3$AUC)
+  auc_label5 <- sprintf('AUC (5Y) = %.4f', roc_object_5$AUC)
+  
+  (ggplot()
+    + geom_line(data = df1, aes(fp, tp, color="AUC (1Y)"))
+    + geom_line(data=df3, aes(fp, tp, color="AUC (3Y)"))
+    + geom_line(data=df5, aes(fp, tp, color="AUC (5Y)"))
+    + geom_abline(intercept = 0, slope = 1)
+    + theme_light()
+    + annotate('text', x = 0.7, y = 0.4, label = auc_label1, size = 4)
+    + annotate('text', x = 0.7, y = 0.3, label = auc_label3, size = 4)
+    + annotate('text', x = 0.7, y = 0.2, label = auc_label5, size = 4)
+    + scale_colour_manual("Legend", 
+                          breaks = c("AUC (1Y)", "AUC (3Y)", "AUC (5Y)"),
+                          values = c("AUC (1Y)"="dark green", "AUC (3Y)"="red", "AUC (5Y)"="blue"))
+    + ylab('Sensitivity')
+    + xlab('1-Specificity')
+    + ggtitle(sprintf('Event-free Survival at years 1, 3, 5')))
 }
 
 
@@ -568,7 +635,8 @@ data[[1]] <- results$train
 data <- append(data, results$validation)
 
 # Create a heatmap comparing the risk and prognostic scores
-results_risk_scores <- compare_risk_scores(data)
+data_names <-  c("train", "GSE85047", "target", "E_TABM-38", "wilms_tumor")
+compare_risk_scores(data, data_names)
 
 # Can't use input parameters because of limitations in survfit function
 kaplan_meier_plot()
@@ -606,10 +674,11 @@ ggplot(results$validation[[2]], aes(x=prognostic_score_interaction_low, y=event_
 ggplot(results$validation[[3]], aes(x=prognostic_score_interaction_low, y=event_free_survival_days)) + geom_boxplot()
 ggplot(results$validation[[4]], aes(x=prognostic_score_interaction_low, y=event_free_survival_days)) + geom_boxplot()
 
+# Create a heatmap comparing the AUC scores using different combinations
+# of validation datasets and risk scores
+evaluate_validation_datasets_combinations(results)
 
-
-
-library(gtools)
-combinations(4, 4)
+# Plot the 1, 3, and 5 year ROC curves for a dataset and risk score
+plot_time_dependent_roc_curves(results$validation[[1]], "prognostic_score_interaction")
 
 
