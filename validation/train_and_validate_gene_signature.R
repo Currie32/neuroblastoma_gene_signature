@@ -3,7 +3,7 @@ source("~/Imperial/neuroblastoma_gene_signature/validation/plot_ggforest.R")
 library(ggplot2)
 library(MuMIn)
 library(pheatmap)
-library(precrec)
+library(pROC)
 library(rms)
 library(stringr)
 library(survival)
@@ -17,7 +17,7 @@ P_VALUE = 0.01
 # The day to split the training and testing data so that
 # the proportional hazards are consistent over time. More info: 
 # https://cran.r-project.org/web/packages/survival/vignettes/timedep.pdf
-CUT_DAY <- c(420)
+CUT_DAY <- c(410)
 
 # Names of the predicted risk scores
 RISK_SCORES <- c(
@@ -26,6 +26,13 @@ RISK_SCORES <- c(
   "risk_score_interaction",
   "prognostic_score_no_interaction",
   "prognostic_score_interaction"
+)
+
+# Names of the datasets in each combination
+VALIDATION_COMBOS_NAMES <- c(
+  "GSE85047", "target", "E-TABM-38",
+  "GSE85047_target", "GSE85047_E-TABM-38", "target_E-TABM-38",
+  "all"
 )
 
 
@@ -340,7 +347,7 @@ interaction_model <- function(train, train_survival) {
 predict_risk_score <- function(model, train, validation, risk_score) {
   
   # Create the risk score for the training dataframe
-  train[risk_score] <- predict(model_prognostic_interaction, train)
+  train[risk_score] <- predict(model, train)
   train[paste(risk_score, "low", sep="_")] <- train[risk_score] < median(train[risk_score][[1]])
   
   # Calculate the median train risk score to be used as the high/low threshold
@@ -377,12 +384,35 @@ prognostic_model <- function(train, train_survival, risk_score) {
   else if (risk_score == "risk_score_interaction") {
     
     model <- coxph(
-      train_survival ~ inss_stage_2 + inss_stage_3 + inss_stage_4:strata(time_group) + inss_stage_4S + under_18_months:strata(time_group) + risk_score_interaction,
+      train_survival ~ inss_stage_2 + inss_stage_3 + inss_stage_4:strata(time_group) + inss_stage_4S + under_18_months:strata(time_group) + risk_score_interaction:strata(time_group),
       data=train,
       na.action=na.pass
     )
   }
   return(model)
+}
+
+
+add_five_year_cutoff <- function(results) {
+  
+  results$train$event_free_survival_5y <- results$train$event_free_survival
+  results$train$event_free_survival_days_5y <- results$train$event_free_survival_days
+  
+  results$train$event_free_survival_5y[
+    (results$train$event_free_survival_days_5y > 365*5) & (results$train$event_free_survival_5y == 1)
+  ] <- 0
+  results$train$event_free_survival_days_5y[results$train$event_free_survival_days_5y > 365*5] <- 365*5
+  
+  for (i in seq(length(results$validation))) {
+    results$validation[[i]]$event_free_survival_5y <- results$validation[[i]]$event_free_survival
+    results$validation[[i]]$event_free_survival_days_5y <- results$validation[[i]]$event_free_survival_days
+    
+    results$validation[[i]]$event_free_survival_5y[
+      (results$validation[[i]]$event_free_survival_days_5y > 365*5) & (results$validation[[i]]$event_free_survival_5y == 1)
+    ] <- 0
+    results$validation[[i]]$event_free_survival_days_5y[results$validation[[i]]$event_free_survival_days_5y > 365*5] <- 365*5
+  }
+  return(results)
 }
 
 
@@ -392,18 +422,22 @@ compare_risk_scores <- function(data, data_names) {
   
   for (risk_score in RISK_SCORES) {
     
+    print(risk_score)
+    
     auc_scores <- c()
     
     for (ii in seq(length(data))) {
+
       precrec_obj <- evalmod(
         scores=data[[ii]][risk_score],
-        labels=data[[ii]]$event_free_survival,
+        labels=data[[ii]]$event_free_survival_5y,
       )
-      auc_score <- round(auc(precrec_obj)$auc[1], 4)
+      auc_score <- round(precrec::auc(precrec_obj)$auc[1], 4)
       auc_scores <- append(auc_scores, auc_score)
     }
     results[[risk_score]] <- auc_scores
   }
+  
   results <- data.frame(results)
   rownames(results) <- data_names
   
@@ -448,16 +482,6 @@ kaplan_meier_plot <- function() {
 }
 
 
-plot_roc_curve <- function(data, risk_score) {
-  
-  precrec_obj <- evalmod(
-    scores=data[[risk_score]],
-    labels=data$event_free_survival,
-  )
-  autoplot(precrec_obj)
-}
-
-
 compare_auc_values <- function(data, samples) {
   
   auc_scores <- vector()
@@ -466,7 +490,7 @@ compare_auc_values <- function(data, samples) {
   for (i in 1:samples) {
     df_sample <- data[sample(nrow(data), length(data), replace=TRUE), ]
 
-      precrec_obj <- evalmod(
+    precrec_obj <- evalmod(
       scores=df_sample$prognostic_score_interaction,
       labels=df_sample$event_free_survival,
     )
@@ -490,31 +514,23 @@ evaluate_validation_datasets_combinations <- function(results) {
   
   # Identify the matching columns between datasets so that
   # they can be concatenated
-  matching_columns <- colnames(results$validation[[1]])[
-    (colnames(results$validation[[1]]) %in% colnames(results$validation[[2]]))
-    & (colnames(results$validation[[1]]) %in% colnames(results$validation[[3]]))
-  ]
+  required_columns <- c(RISK_SCORES, "event_free_survival_5y")
   
   # Add the different combinations of validation datasets to a list
   validation_combos <- list()
-  validation_combos[[1]] <- results$validation[[1]][matching_columns]
-  validation_combos[[2]] <- results$validation[[2]][matching_columns]
-  validation_combos[[3]] <- results$validation[[3]][matching_columns]
-  validation_combos[[4]] <- rbind(validation[[1]], validation[[2]])
-  validation_combos[[5]] <- rbind(validation[[1]], validation[[3]])
-  validation_combos[[6]] <- rbind(validation[[2]], validation[[3]])
-  validation_combos[[7]] <- rbind(validation[[1]], validation[[2]], validation[[3]])
-  
-  # Names of the datasets in each combination
-  validation_combos_names <- c(
-    "GSE85047", "target", "E-TABM-38",
-    "GSE85047_target", "GSE85047_E-TABM-38", "target_E-TABM-38",
-    "all"
-  )
+  validation_combos[[1]] <- results$validation[[1]][required_columns]
+  validation_combos[[2]] <- results$validation[[2]][required_columns]
+  validation_combos[[3]] <- results$validation[[3]][required_columns]
+  validation_combos[[4]] <- rbind(validation_combos[[1]], validation_combos[[2]])
+  validation_combos[[5]] <- rbind(validation_combos[[1]], validation_combos[[3]])
+  validation_combos[[6]] <- rbind(validation_combos[[2]], validation_combos[[3]])
+  validation_combos[[7]] <- rbind(validation_combos[[1]], validation_combos[[2]], validation_combos[[3]])
   
   # Create a heatmap to compare the AUC scores across the
   # combination of datasets and risk scores
-  compare_risk_scores(validation_combos, validation_combos_names)
+  compare_risk_scores(validation_combos, VALIDATION_COMBOS_NAMES)
+  
+  return(validation_combos)
 }
 
 
@@ -559,6 +575,49 @@ plot_time_dependent_roc_curves <- function(data, risk_score) {
     + ylab('Sensitivity')
     + xlab('1-Specificity')
     + ggtitle(sprintf('Event-free Survival at years 1, 3, 5')))
+}
+
+
+measure_auc_p_values <- function(data) {
+  
+  prognostic_scores <- c(
+    "prognostic_score_no_interaction",
+    "prognostic_score_interaction"
+  )
+  
+  results <- list()
+  
+  for (score in prognostic_scores) {
+    
+    p_values <- c()
+    
+    for (i in seq(length(data))) {
+      roc_model <- roc(data[[i]]$event_free_survival_5y, data[[i]][[score]])
+      roc_baseline <- roc(data[[i]]$event_free_survival_5y, data[[i]]$risk_score_baseline)
+      
+      result <- roc.test(roc_model, roc_baseline)
+      p_value <- round(result$p.value, 4)
+      p_values <- append(p_values, p_value)
+    }
+    results[[score]] <- p_values
+  }
+  
+  results <- data.frame(results)
+  rownames(results) <- VALIDATION_COMBOS_NAMES
+  
+  pheatmap(
+    results,
+    cluster_rows=F,
+    cluster_cols=F,
+    display_numbers=T,
+    legend=F,
+    main="P-values of AUC scores between prognostic models and baseline model",
+    breaks=c(
+      seq(0, 0.05, length.out=ceiling(10)),
+      seq(0.1, 1, length.out=ceiling(10))
+    ),
+    color=colorRampPalette(c("light blue", "white", "orange"))(20)
+  )
 }
 
 
@@ -629,6 +688,10 @@ ggcoxzph(zph_model_prognostic_interaction)
 results <- predict_risk_score(model_prognostic_no_interaction, train, validation, "prognostic_score_no_interaction")
 results <- predict_risk_score(model_prognostic_interaction, results$train, results$validation, "prognostic_score_interaction")
 
+# Truncate the survival data to five years for measuring the performance
+# of the models
+results <- add_five_year_cutoff(results)
+
 # Combine train and validation into one list
 data <- list()
 data[[1]] <- results$train
@@ -641,13 +704,6 @@ compare_risk_scores(data, data_names)
 # Can't use input parameters because of limitations in survfit function
 kaplan_meier_plot()
 
-# Check if difference in AUC scores is significant
-# (between baseline model and prognostic interaction model)
-compare_auc_values(data[[1]], 500)
-compare_auc_values(data[[2]], 500)
-compare_auc_values(data[[3]], 500)
-compare_auc_values(data[[4]], 500)
-
 # Plot gene expression heatmap
 pheatmap(
   train[order(train$risk_score_interaction),][colnames(train) %in% genes_modelling_interaction],
@@ -659,7 +715,6 @@ pheatmap(
 
 # Plot hazard scores from models
 plot_ggforest(model_prognostic_interaction, data=train)
-hist(train$prognostic_score_interaction)
 
 # Check number of high and low prognostic risk scores
 table(results$train$prognostic_score_interaction_low)
@@ -676,9 +731,11 @@ ggplot(results$validation[[4]], aes(x=prognostic_score_interaction_low, y=event_
 
 # Create a heatmap comparing the AUC scores using different combinations
 # of validation datasets and risk scores
-evaluate_validation_datasets_combinations(results)
+validation_combos <- evaluate_validation_datasets_combinations(results)
 
 # Plot the 1, 3, and 5 year ROC curves for a dataset and risk score
 plot_time_dependent_roc_curves(results$validation[[1]], "prognostic_score_interaction")
 
-
+# Measure the p-values for the ROC curves of the prognostic and baseline models
+# across the combinations of validation datasets
+measure_auc_p_values(validation_combos)

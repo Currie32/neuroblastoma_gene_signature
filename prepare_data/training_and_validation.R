@@ -175,13 +175,11 @@ GSE62564 <- format_GSE_patient_data(
 # Create training dataset
 train <- combine_datasets(GSE49711, GSE62564)
 
-
 train_corr <- add_correlated_genes(genes, train)
 
 correlated_genes <- colnames(train_corr)[!colnames(train_corr) %in% colnames(train)]
 
 train_corr <- average_correlated_genes_train(correlated_genes, train_corr, train)
-
 
 # Add missing features to testing datasets
 GSE85047_corr <- add_missing_features(train, GSE85047)
@@ -194,7 +192,6 @@ target_2018_corr <- average_correlated_genes(correlated_genes, target_2018_corr)
 E_TABM_38_corr <- average_correlated_genes(correlated_genes, E_TABM_38_corr)
 wilms_tumor_corr <- average_correlated_genes(correlated_genes, wilms_tumor_corr)
 
-
 # Add under_18_months feature
 train_corr$under_18_months <- is_under_18_months(train_corr)
 GSE85047_corr$under_18_months <- is_under_18_months(GSE85047_corr)
@@ -202,17 +199,9 @@ target_2018_corr$under_18_months <- is_under_18_months(target_2018_corr)
 E_TABM_38_corr$under_18_months <- is_under_18_months(E_TABM_38_corr)
 wilms_tumor_corr$under_18_months <- is_under_18_months(wilms_tumor_corr)
 
-# Create dataset that is composed of all of the neuroblastoma datasets
-overlap <- colnames(GSE85047)[
-  (colnames(GSE85047) %in% colnames(target_2018))
-  & (colnames(GSE85047) %in% colnames(E_TABM_38))
-] 
-test_all <- rbind(GSE85047[overlap], target_2018[overlap], E_TABM_38[overlap])
-
 # Save datasets
 write.csv(train_corr, file.path(PATH, "train.csv"), row.names=FALSE)
 write.csv(GSE85047_corr, file.path(PATH, "test_GSE85047.csv"), row.names=FALSE)
 write.csv(target_2018_corr, file.path(PATH, "test_target.csv"), row.names=FALSE)
 write.csv(E_TABM_38_corr, file.path(PATH, "test_E_TABM_38.csv"), row.names=FALSE)
-write.csv(test_all, file.path(PATH, "test_all.csv"), row.names=FALSE)
 write.csv(wilms_tumor_corr, file.path(PATH, "test_wilms_tumor.csv"), row.names=FALSE)
