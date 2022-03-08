@@ -2,11 +2,17 @@ library("biomaRt")
 library(GEOquery)
 
 
-# Update path as needed
+# Update path to data as needed
 PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
 
 
 create_join_table <- function(gene_list) {
+  #' Create a join table between the list of differentially expressed genes
+  #' and the gene expression data.
+  #' 
+  #' gene_list List(str): a list of ensembl gene IDs
+  #' 
+  #' return data.frame: the join table
   
   # Connect to ensembl database
   ensembl <- useMart("ensembl", dataset="hsapiens_gene_ensembl")
@@ -16,7 +22,7 @@ create_join_table <- function(gene_list) {
   join_table <- getBM(
     attributes=c("refseq_mrna", "ensembl_gene_id"),
     filters="ensembl_gene_id",
-    values=gene_list$ensembl_gene_id,
+    values=gene_list,
     mart=ensembl
   )
   
@@ -28,6 +34,12 @@ create_join_table <- function(gene_list) {
 
 
 load_and_prepare_expression_data <- function(gene_list){
+  #' Load and prepare the GEO expression data
+  #' 
+  #' gene_list data.frame: contains information about the list of
+  #'                       differentially expressed genes
+  #'                       
+  #' returns data.frame: the prepared expression data
   
   # Load the patients' expression data
   # Downloaded from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE62564
@@ -37,7 +49,7 @@ load_and_prepare_expression_data <- function(gene_list){
     sep="\t"
   )
   
-  # Convert corrupt data to NA, then filter out rows will NA values
+  # Convert corrupt data to NA, then filter out rows with NA values
   expression_data <- expression_data[rowSums(is.na(expression_data)) == 0,]
   
   # Add external_gene_name to expression data
@@ -48,10 +60,33 @@ load_and_prepare_expression_data <- function(gene_list){
     by.y="RefSeqID"
   )
   
-  # Remove duplicate genes
-  expression_data <- expression_data[!duplicated(expression_data$external_gene_name),]
+  # Average expression data from duplicated genes
+  ## Identify which genes have multiple entries
+  genes_duplicated <- unique(
+    expression_data$external_gene_name[duplicated(expression_data$external_gene_name)]
+  )
   
-  # Select the genes for future assignment
+  for (gene in genes_duplicated) {
+    
+    # Get the mean expression values for each gene
+    mean_values <- data.frame(t(colMeans(
+      expression_data[expression_data$external_gene_name == gene, 3:length(expression_data)]
+    )))
+    
+    # The information to identify the genes and patients
+    row_info <- expression_data[expression_data$external_gene_name == gene, 1:2][1,]
+    
+    # Combine the expression data and identification info
+    row_data <- data.frame(row_info, mean_values)
+    
+    # Remove the original expression data from the dataframe
+    expression_data <- expression_data[expression_data$external_gene_name != gene,]
+    
+    # Add the averaged expression data to the dataframe
+    expression_data <- rbind(expression_data, row_data)
+  }
+  
+  # Get the gene names for future assignment
   genes <- expression_data$external_gene_name
   
   # Filter to only the expression features
@@ -74,6 +109,9 @@ load_and_prepare_expression_data <- function(gene_list){
 
 
 load_and_prepare_patient_data <- function() {
+  #' Load and prepare the patient data for analysis
+  #' 
+  #' return data.frame: the patient data
   
   # Load GEO data
   gse <- getGEO("GSE62564")[[1]]
@@ -104,6 +142,12 @@ load_and_prepare_patient_data <- function() {
 
 
 rename_columns <- function(df) {
+  #' Rename the features of the patient data
+  #' 
+  #' df data.frame: the patient data to be renamed
+  #' 
+  #' returns data.frame: the renamed patient data
+  
   names(df)[names(df) == "title"] <- "sequence_id"
   names(df)[names(df) == "geo_accession"] <- "geo_id"
   names(df)[names(df) == "Sex:ch1"] <- "male"
@@ -118,8 +162,13 @@ rename_columns <- function(df) {
 
 
 correct_data_types <- function(df) {
+  #' Format the patient data so that it is ready for analysis
+  #' 
+  #' df data.frame: the patient data
+  #' 
+  #' return data.frame: the formatted patient data
   
-  # Trim unnecessary characters from string
+  # Trim unnecessary characters from the sequence_id
   df$sequence_id <- substr(df$sequence_id, 1, nchar(df$sequence_id) - 4)
   
   # Convert string values to integers
@@ -133,6 +182,7 @@ correct_data_types <- function(df) {
   # Convert null values to -1, so the feature can be an integer
   df$favourable[is.na(df$favourable)] <- -1
   
+  # Convert features to integers
   df$age_days <- as.integer(df$age_days)
   df$male <- as.integer(df$male)
   df$high_risk <- as.integer(df$high_risk)
@@ -149,7 +199,7 @@ gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
 
 # Create join table for merging the gene_list with the
 # gene expression data
-join_table <- create_join_table(gene_list)
+join_table <- create_join_table(gene_list$ensembl_gene_id)
 
 # Add refseq_mrna values to gene_list
 gene_list <- merge(gene_list, join_table, on="ensembl_gene_id_version")
@@ -167,4 +217,5 @@ patients <- merge(
   on="sequence_id",
 )
 
+# Save the patient data
 write.csv(patients, file.path(PATH, "GSE62564.csv"), row.names=FALSE)

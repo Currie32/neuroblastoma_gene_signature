@@ -1,10 +1,16 @@
 library(GEOquery)
+library(fastDummies)
 
 
 PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
 
 
 prepare_patient_data <- function(gse) {
+  #' Prepare the patient data for analysis
+  #' 
+  #' gse List: contains information about the study
+  #' 
+  #' return data.frame: the patient data
   
   # Extract patient data
   patients <- gse[["GSE85047_series_matrix.txt.gz"]]@phenoData@data
@@ -28,6 +34,11 @@ prepare_patient_data <- function(gse) {
 
 
 rename_columns <- function(df) {
+  #' Rename the features of the patient data
+  #' 
+  #' df data.frame: the patient data to be renamed
+  #' 
+  #' returns data.frame: the renamed patient data
   
   names(df)[names(df) == "title"] <- "sequence_id"
   names(df)[names(df) == "geo_accession"] <- "geo_id"
@@ -41,6 +52,11 @@ rename_columns <- function(df) {
 }
 
 correct_data_types <- function(df) {
+  #' Format the patient data so that it is ready for analysis
+  #' 
+  #' df data.frame: the patient data
+  #' 
+  #' return data.frame: the formatted patient data
   
   # Remove rows with null values
   df <- df[df$age_at_diagnosis_days != "NA", ]
@@ -77,6 +93,13 @@ correct_data_types <- function(df) {
 
 
 prepare_expression_data <- function(gse, gene_list) {
+  #' Prepare the Target expression data
+  #' 
+  #' gse List: contains information about the study
+  #' gene_list List(str): the differentially expressed gene names to filter the
+  #'                      the expression data to.
+  #'                       
+  #' returns data.frame: the prepared expression data
   
   # Get gene names for expression data
   genes <- gene_names(gse)
@@ -84,14 +107,44 @@ prepare_expression_data <- function(gse, gene_list) {
   # Extract the expression data
   expression_data <- gse[["GSE85047_series_matrix.txt.gz"]]@assayData[["exprs"]]
   expression_data <- data.frame(expression_data)
-  
+
   # Remove rows that are missing a gene name
   expression_data <- expression_data[genes != "",]
   genes <- genes[genes != ""]
   
-  # Remove rows with duplicate genes
-  expression_data <- expression_data[!duplicated(genes),]
-  genes <- genes[!duplicated(genes)]
+  # Average expression data from duplicated gens
+  ## Identify which genes have multiple entries
+  genes_duplicated <- unique(genes[duplicated(genes)])
+  
+  # Stored the averaged expression data
+  expression_data_mean <- data.frame()
+
+  for (duplicated_gene in genes_duplicated) {
+    
+    # Identify the gene's rows
+    indicies <- duplicated_gene == genes
+    
+    # Get the mean expression values for the gene
+    mean_values <- data.frame(t(colMeans(expression_data[indicies, ])))
+    
+    # Add the averaged expression data to the dataframe
+    expression_data_mean <- rbind(expression_data_mean, mean_values)
+  }
+  
+  # Identify the indicies of the genes with multiple readings
+  duplicated_indicies <- genes %in% genes_duplicated
+  
+  # Remove the original expression data from the data
+  expression_data <- expression_data[!duplicated_indicies,]
+  
+  # Remove the duplicated gene entries from the list of gene names
+  genes <- genes[!duplicated_indicies]
+  
+  # Add the averaged expression data to the dataframe
+  expression_data <- rbind(expression_data, expression_data_mean)
+  
+  # Add the names of the duplicated genes to the list of gene names
+  genes <- c(genes, genes_duplicated)
   
   # Transpose the data to have the genes as columns
   expression_data_t <- data.frame(t(expression_data))
@@ -102,6 +155,9 @@ prepare_expression_data <- function(gse, gene_list) {
   # Filter to genes in gene_list
   expression_data_t <- expression_data_t[colnames(expression_data_t) %in% gene_list]
   
+  # Z-transform the expression data
+  expression_data_t <- data.frame(scale(expression_data_t))
+
   # Add geo_id for merging with patients data
   expression_data_t$geo_id <- colnames(expression_data)
   
@@ -109,7 +165,12 @@ prepare_expression_data <- function(gse, gene_list) {
 }
 
 
-gene_names <- function(df) {
+gene_names <- function(gse) {
+  #' Get the gene names from the GEO data
+  #' 
+  #' gse List: contains information about the study
+  #' 
+  #' return List(str): Names of the genes used in the study
   
   feature_data <- gse[["GSE85047_series_matrix.txt.gz"]]@featureData@data
   genes <- str_split_fixed(feature_data$gene_assignment, " // ", n=3)[,2]
@@ -128,12 +189,13 @@ gse <- getGEO("GSE85047")
 patients <- prepare_patient_data(gse)
 expression_data <- prepare_expression_data(gse, gene_list$external_gene_name)
 
-# Merge patient data with their expression data
+# Merge the patient data with their expression data
 patients <- merge(
   patients,
   expression_data,
   on="sequence_id",
 )
 
-# Save patient data
+# Save the patient data
 write.csv(patients, file.path(PATH, "GSE85047.csv"), row.names=FALSE)
+

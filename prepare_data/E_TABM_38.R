@@ -2,9 +2,12 @@ PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
 
 
 load_and_prepare_patient_data <- function() {
+  #' Load and prepare the patient data for analysis
+  #' 
+  #' return data.frame: the patient data
   
-  # Data is downloaded from: https://www.ebi.ac.uk/arrayexpress/experiments/E-TABM-38/files/
-  patients <- read.csv("~/Downloads/E-TABM-38.sdrf.txt", sep="\t")
+  # Downloaded from: https://www.ebi.ac.uk/arrayexpress/experiments/E-TABM-38/files/
+  patients <- read.csv(file.path(PATH, "/E-TABM-38.sdrf.txt"), sep="\t")
   
   # Filter to relevant columns
   patients <- patients[c(
@@ -24,6 +27,11 @@ load_and_prepare_patient_data <- function() {
 
 
 rename_columns <- function(df) {
+  #' Rename the features of the patient data
+  #' 
+  #' df data.frame: the patient data to be renamed
+  #' 
+  #' returns data.frame: the renamed patient data
   
   names(df)[names(df) == "Hybridization.Name"] <- "sequence_id"
   names(df)[names(df) == "Characteristics..Sex."] <- "male"
@@ -37,7 +45,13 @@ rename_columns <- function(df) {
 
 
 correct_data_types <- function(df) {
+  #' Format the patient data so that it is ready for analysis
+  #' 
+  #' df data.frame: the patient data
+  #' 
+  #' return data.frame: the formatted patient data
   
+  # Remove the patients that are missing their age at diagnosis
   df <- df[!is.na(df$age_at_diagnosis_days),]
   
   # Identify the male patients
@@ -71,7 +85,16 @@ correct_data_types <- function(df) {
 
 
 load_and_prepare_expression_data <- function() {
+  #' Load and prepare the Target expression data
+  #' 
+  #' gene_list List(str): the differentially expressed gene names to filter the
+  #'                      the expression data to.
+  #'                       
+  #' returns data.frame: the prepared expression data
   
+  # Load the expression data
+  # Downloaded from: https://www.ebi.ac.uk/arrayexpress/experiments/E-TABM-38/files/
+  # File name: E-TABM-38.processed.1.zip
   expression_data <- read.csv(file.path(PATH, "Warnat19092005_E-NBDE-1_FGEDM.txt"), sep="\t")
   
   # Remove unncessary row
@@ -104,8 +127,11 @@ load_and_prepare_expression_data <- function() {
 
 
 get_gene_names <- function() {
+  #' Load and extract the gene names
+  #' 
+  #' return List(str): gene names used in the study 
   
-  # Data is downloaded from: https://www.ebi.ac.uk/arrayexpress/experiments/E-TABM-38/files/
+  # Downloaded from: https://www.ebi.ac.uk/arrayexpress/experiments/E-TABM-38/files/
   gene_names <- read.csv(file.path(PATH, "A-MEXP-255_comments.txt"), sep="\t")
   controls_and_experiments <- read.csv(file.path(PATH, "A-MEXP-255.adf.txt"), sep="\t", skip=23)
   
@@ -123,10 +149,12 @@ get_gene_names <- function() {
 patients <- load_and_prepare_patient_data()
 expression_data <- load_and_prepare_expression_data()
 
+# Merge the patient and expression data
 patients <- merge(
   patients,
   expression_data,
   on="sequence_id"
 )
 
+# Save the patient data
 write.csv(patients, file.path(PATH, "E_TABM_38.csv"), row.names=FALSE)

@@ -1,14 +1,23 @@
+library(fastDummies)
+
+
 PATH <- "~/Downloads/wt_target_2018_pub/"
 
 
 load_and_prepare_patient_data <- function() {
+  #' Load and prepare the patient data for analysis
+  #' 
+  #' return data.frame: the patient data
 
+  # Load header row
+  # Downloaded from: https://www.cbioportal.org/study/summary?id=wt_target_2018_pub
   headers <- read.csv(
     file.path(PATH, "data_clinical_patient.txt"),
     nrows = 1,
     header=F,
     sep="\t"
   )
+  
   # Load data, but skip first five rows since they do not contain the data
   patients <- read.csv(
     file.path(PATH, "data_clinical_patient.txt"),
@@ -17,8 +26,10 @@ load_and_prepare_patient_data <- function() {
     sep="\t"
   )
   
+  # Rename the columns using the headers
   colnames(patients) <- headers
   
+  # Filter to relevant columns
   patients <- patients[c(
     "#Patient Identifier",
     "Sex",
@@ -36,6 +47,11 @@ load_and_prepare_patient_data <- function() {
 
 
 rename_columns <- function(df) {
+  #' Rename the features of the patient data
+  #' 
+  #' df data.frame: the patient data to be renamed
+  #' 
+  #' returns data.frame: the renamed patient data
   
   names(df)[names(df) == "#Patient Identifier"] <- "sequence_id"
   names(df)[names(df) == "Sex"] <- "male"
@@ -49,6 +65,11 @@ rename_columns <- function(df) {
 
 
 correct_data_types <- function(df) {
+  #' Format the patient data so that it is ready for analysis
+  #' 
+  #' df data.frame: the patient data
+  #' 
+  #' return data.frame: the formatted patient data
   
   # Identify the male patients
   df$male[df$male == "Male"] <- 1
@@ -72,34 +93,24 @@ correct_data_types <- function(df) {
     remove_selected_columns=TRUE
   )
   
-  df$event_free_survival[df$event_free_survival == "None"] <- 1
-  df$event_free_survival[df$event_free_survival %in% c("Progression", "Relapse")] <- 0
+  # Convert to integer values
+  df$event_free_survival[df$event_free_survival == "None"] <- 0
+  df$event_free_survival[df$event_free_survival %in% c("Progression", "Relapse")] <- 1
   
   return(df)
 }
 
-df <- read.csv(
-  file.path(PATH, "data_mrna_seq_rpkm_zscores_ref_all_samples.txt"),
-  sep="\t"
-)
-df <- df[df$Hugo_Symbol %in% gene_list$external_gene_name,]
-df <- df[!duplicated(df$Hugo_Symbol),]
-genes <- df$Hugo_Symbol
-df <- df[,grepl("TARGET", colnames(df))]
-df_t <- t(df)
-colnames(df_t) <- genes
-df_t <- data.frame(df_t)
-df_t$sequence_id <- colnames(df)
-df_t$sequence_id <- gsub("\\.", "-", df_t$sequence_id)
-df_t$sequence_id <- substr(df_t$sequence_id, 1, 16)
-
-df
-
 
 load_and_prepare_expression_data <- function(gene_list) {
+  #' Load and prepare the Target expression data
+  #' 
+  #' gene_list List(str): the differentially expressed gene names to filter the
+  #'                      the expression data to.
+  #'                       
+  #' returns data.frame: the prepared expression data
   
   # Load expression data
-  # Downloaded from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE49711
+  # Downloaded from: https://www.cbioportal.org/study/summary?id=wt_target_2018_pub
   df <- read.csv(
     file.path(PATH, "data_mrna_seq_rpkm_zscores_ref_all_samples.txt"),
     sep="\t"
@@ -108,8 +119,27 @@ load_and_prepare_expression_data <- function(gene_list) {
   # Filter to genes in the gene list
   df <- df[df$Hugo_Symbol %in% gene_list,]
   
-  # Remove duplicate genes
-  df <- df[!duplicated(df$Hugo_Symbol),]
+  # Average expression data from duplicated genes
+  ## Identify which genes have multiple entries
+  genes_duplicated <- unique(df$Hugo_Symbol[duplicated(df$Hugo_Symbol)])
+  
+  for (gene in genes_duplicated) {
+    
+    # Get the mean expression values for each gene
+    mean_values <- data.frame(t(colMeans(df[df$Hugo_Symbol == gene, 3:length(df)])))
+    
+    # The information to identify the genes and patients
+    row_info <- df[df$Hugo_Symbol == gene, 1:2][1,]
+    
+    # Combine the expression data and identification info
+    row_data <- data.frame(row_info, mean_values)
+    
+    # Remove the original expression data from the dataframe
+    df <- df[df$Hugo_Symbol != gene,]
+    
+    # Add the averaged expression data to the dataframe
+    df <- rbind(df, row_data)
+  }
   
   # Select the genes for future assignment
   genes <- df$Hugo_Symbol
@@ -126,7 +156,7 @@ load_and_prepare_expression_data <- function(gene_list) {
   # Undo log2 transformation and Z-transform the expression values
   df_t <- data.frame(df_t)
   
-  # Add sequence_id
+  # Add and truncate the sequence_id 
   df_t$sequence_id <- colnames(df)
   df_t$sequence_id <- gsub("\\.", "-", df_t$sequence_id)
   df_t$sequence_id <- substr(df_t$sequence_id, 1, 16)
@@ -135,10 +165,12 @@ load_and_prepare_expression_data <- function(gene_list) {
 }
 
 # Load differentially expressed genes
-gene_list <- read.csv("~/Imperial/neuroblastoma_gene_signature/data/gene_list.csv")
+gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
 
+# Load the patient data
 patients <- load_and_prepare_patient_data()
 
+# Load the gene expression data
 expression_data <- load_and_prepare_expression_data(gene_list$external_gene_name)
 
 # Merge patient data with their expression data
@@ -148,4 +180,5 @@ patients <- merge(
   on="sequence_id",
 )
 
-write.csv(patients, "~/Imperial/neuroblastoma_gene_signature/data/wilms_tumor.csv", row.names=FALSE)
+# Save the patient data
+write.csv(patients, file.path(PATH, "wilms_tumor.csv"), row.names=FALSE)

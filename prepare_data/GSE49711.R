@@ -1,10 +1,14 @@
 library(GEOquery)
+library(fastDummies)
 
 
 PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
 
 
 load_and_prepare_patient_data <- function() {
+  #' Load and prepare the patient data for analysis
+  #' 
+  #' return data.frame: the patient data
   
   # Load GEO data
   gse <- getGEO("GSE49711")[[1]]
@@ -35,6 +39,12 @@ load_and_prepare_patient_data <- function() {
 
 
 rename_columns <- function(df) {
+  #' Rename the features of the patient data
+  #' 
+  #' df data.frame: the patient data to be renamed
+  #' 
+  #' returns data.frame: the renamed patient data
+  
   names(df)[names(df) == "title"] <- "sequence_id"
   names(df)[names(df) == "geo_accession"] <- "geo_id"
   names(df)[names(df) == "Sex:ch1"] <- "male"
@@ -49,6 +59,11 @@ rename_columns <- function(df) {
 
 
 correct_data_types <- function(df) {
+  #' Format the patient data so that it is ready for analysis
+  #' 
+  #' df data.frame: the patient data
+  #' 
+  #' return data.frame: the formatted patient data
   
   # Identify the male patients
   df$male[df$male == "M"] <- 1
@@ -57,6 +72,7 @@ correct_data_types <- function(df) {
   # Convert null values to -1, so the feature can be an integer
   df <- df[df$mycn_amplification != "N/A", ]
 
+  # Convert features to integers
   df$male <- as.integer(df$male)
   df$age_at_diagnosis_days <- as.integer(df$age_at_diagnosis_days)
   df$high_risk <- as.integer(df$high_risk)
@@ -76,6 +92,12 @@ correct_data_types <- function(df) {
 
 
 load_and_prepare_expression_data <- function(gene_list) {
+  #' Load and prepare the GEO expression data
+  #' 
+  #' gene_list List(str): the differentially expressed gene names to filter the
+  #'                      the expression data to.
+  #'                       
+  #' returns data.frame: the prepared expression data
   
   # Load expression data
   # Downloaded from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE49711
@@ -127,5 +149,5 @@ patients <- merge(
   on="sequence_id",
 )
 
-# Save patient data
+# Save the patient data
 write.csv(patients, file.path(PATH, "GSE49711.csv"), row.names=FALSE)
