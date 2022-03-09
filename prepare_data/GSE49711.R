@@ -1,3 +1,5 @@
+# Prepare GSE49711 for analysis
+
 library(GEOquery)
 library(fastDummies)
 

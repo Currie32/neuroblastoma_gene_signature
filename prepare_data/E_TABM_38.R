@@ -1,3 +1,5 @@
+# Prepare E-TABM-38 for analysis
+
 PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
 
 

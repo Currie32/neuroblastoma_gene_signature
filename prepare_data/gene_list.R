@@ -1,3 +1,5 @@
+# Combine the datasets to create a list of differentially expressed genes
+
 library(data.table)
 
 PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"

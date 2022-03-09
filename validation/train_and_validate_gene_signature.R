@@ -3,7 +3,9 @@ source("~/Imperial/neuroblastoma_gene_signature/validation/plot_ggforest.R")
 library(ggplot2)
 library(MuMIn)
 library(pheatmap)
+library(precrec)
 library(pROC)
+library(randomForestSRC)
 library(rms)
 library(stringr)
 library(survival)
@@ -12,7 +14,7 @@ library(survminer)
 
 
 PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
-P_VALUE = 0.01
+P_VALUE = 0.005
 
 # The day to split the training and testing data so that
 # the proportional hazards are consistent over time. More info: 
@@ -24,15 +26,23 @@ RISK_SCORES <- c(
   "risk_score_baseline",
   "risk_score_no_interaction",
   "risk_score_interaction",
+  "risk_score_rf",
+  "risk_score_differentiation",
+  "risk_score_immune_disregulation",
+  "risk_score_metabolism",
+  "risk_score_metastasis",
+  "risk_score_nuclear_transport",
+  "risk_score_tumourigenesis",
   "prognostic_score_no_interaction",
-  "prognostic_score_interaction"
+  "prognostic_score_interaction",
+  "prognostic_score_rf"
 )
 
 # Names of the datasets in each combination
 VALIDATION_COMBOS_NAMES <- c(
-  "GSE85047", "target", "E-TABM-38",
+  "GSE85047", "target", "E-TABM-38", "wilms_tumor",
   "GSE85047_target", "GSE85047_E-TABM-38", "target_E-TABM-38",
-  "all"
+  "GSE85047_target_E-TABM-38"
 )
 
 
@@ -40,6 +50,7 @@ load_training_data <- function() {
   
   train <- read.csv(file.path(PATH, "train.csv"))
   
+  return(train)
 }
 
 load_validation_data <- function() {
@@ -60,8 +71,8 @@ load_validation_data <- function() {
 survival_data_train <- function(data) {
   
   survival <- Surv(data$event_free_survival_days, data$event_free_survival)
-  return(survival)
   
+  return(survival)
 }
 
 
@@ -122,27 +133,36 @@ split_data_validation <- function(data, survival) {
 }
 
 
-modelling_genes <- function(genes, train, survival, interaction) {
+modelling_genes <- function(genes, train, train_survival, interaction) {
+  #' Perform multiple cox regressions and AIC feature selection to determine
+  #' the optimal set of genes for predicting the risk of neuroblastoma
+  #' 
+  #' genes List(str): names of the genes to analyse
+  #' train data.frame: contains the phenotype and expression data
+  #' train_survival double: the survival object for the training dataset
+  #' interaction bool: TRUE if the interaction step should be used
+  #' 
+  #' return List(str): names of the most predictive genes
   
-  # Find the combination of features that are most predictive of survival
-  genes_candidate <- univariate_cox_regression(genes, train, survival)
-  genes_significant <- multivariate_cox_regression(genes_candidate, survival, train, FALSE, FALSE)
+  genes_candidate <- univariate_cox_regression(genes, train, train_survival)
+  genes_significant <- multivariate_cox_regression(genes_candidate, train_survival, train, FALSE, FALSE)
   
   if (interaction) {
-    genes_significant <- multivariate_cox_regression(genes_significant, survival, train, FALSE, TRUE)
+    genes_significant <- multivariate_cox_regression(genes_significant, train_survival, train, FALSE, TRUE)
   }
   
-  genes_best <- aic_feature_selection(genes_significant, survival, train, '')
+  genes_best <- aic_feature_selection(genes_significant, train_survival, train, '')
   
   return(genes_best)
 }
 
 
-univariate_cox_regression <- function(genes, train, survival) {
+univariate_cox_regression <- function(genes, train, train_survival) {
   #' Find the genes that are statistically significant in a univariate cox regression.
   #'
-  #' genes (List(str)): Names of genes
-  #' df (data.frame): Contains survival and gene expression data
+  #' genes List(str): Names of genes to analyse
+  #' train data.frame: Contains the gene expression data
+  #' train_survival double: The survival object for the training data
   #'
   #' return List(str): Names of statistically significant genes
   
@@ -153,7 +173,7 @@ univariate_cox_regression <- function(genes, train, survival) {
     
     # Perform cox regression
     result <- coxph(
-      as.formula(paste("survival ~ ", gene)),
+      as.formula(paste("train_survival ~ ", gene)),
       data=train,
       na.action=na.pass
     )
@@ -174,14 +194,18 @@ multivariate_cox_regression <- function(
   features, train_survival, train, use_phenotype_features, use_interaction
 ) {
   #' Find which features (genes and patient traits) are statistically
-  #' significant in combination
+  #' significant using a multivariate cox regression
   #' 
-  #' features (List(str)): genes that were significant during the
-  #'                              univariate cox regression
-  #' survival (double): survival information for each patient
-  #' df (data.frame): contains the expression and survival data for each patient
+  #' features List(str): genes that were significant during the
+  #'                     univariate cox regression
+  #' train_survival double: The survival object for the training data
+  #' train data.frame: contains the expression and survival data for each patient
+  #' use_phenotype_features bool: TRUE if the specificed phenotype features
+  #'                              should be used
+  #' use_interaction bool: TRUE if an interaction term for each pair of features
+  #'                       should be included
   #' 
-  #' returns (List(str)): the statistically significant features
+  #' returns List(str): the statistically significant features
   
   if (use_phenotype_features) {
     
@@ -243,12 +267,13 @@ multivariate_cox_regression <- function(
 aic_feature_selection <- function(features, train_survival, train, delimiter) {
   #' Use AIC to find the optimal combination of features.
   #' 
-  #' features (List(str)): the statistically significant features from the
-  #'                    multivariate cox regression
-  #' survival (double): survival information for each patient
-  #' df (data.frame): contains the expression and survival data for each patient
+  #' features List(str): the statistically significant features from a
+  #'                     multivariate cox regression
+  #' train_survival double: survival information for each patient
+  #' train data.frame: contains the expression and survival data for each patient
+  #' delimiter str: the character to split the index of the best features
   #' 
-  #' returns (List(str)): the best combination of features according to AIC 
+  #' returns List(str): the best combination of features according to AIC 
   
   # Format the features for the cox regression
   features_joined <- paste(features, collapse = " + ")
@@ -275,6 +300,13 @@ aic_feature_selection <- function(features, train_survival, train, delimiter) {
 
 
 baseline_model <- function(train, train_survival) {
+  #' Build a baseline model to measure the predictive performance of only
+  #' phenotype features
+  #' 
+  #' train data.frame: contains the phenotype features to analysis
+  #' train_survival double: the survival object for the training data
+  #' 
+  #' return List: the trained baseline model
   
   # The baseline features for the model, i.e. all features, but the
   # gene expression ones
@@ -288,6 +320,7 @@ baseline_model <- function(train, train_survival) {
   )
   features_joined <- paste(features, collapse = " + ")
 
+  # # Fit top model
   top_model_baseline <- coxph(
     as.formula(paste("train_survival ~", features_joined)),
     data=train,
@@ -311,6 +344,8 @@ baseline_model <- function(train, train_survival) {
   # Train a model using the best combination of features
   features_joined <- paste(paste(best_model_baseline_features, ":strata(time_group)"), collapse = " + ")
 
+  # Train the baseline model
+  # Below are the features_joined and have been stratified across the time groups
   model_baseline <- coxph(
     train_survival ~ mycn_amplification + under_18_months:strata(time_group) + inss_stage_2:strata(time_group) + inss_stage_3:strata(time_group) + inss_stage_4:strata(time_group) + inss_stage_4S:strata(time_group),
     data=train,
@@ -322,7 +357,16 @@ baseline_model <- function(train, train_survival) {
 
 
 no_interaction_model <- function(train, train_survival) {
+  #' Train a cox proportional-hazard model, which does not include any
+  #' interacting features
+  #' 
+  #' train data.frame: contains the expression features to model
+  #' train_survival double: the survival object for the training data
+  #' 
+  #' return List: the trained model
   
+  # The features below are genes_modelling_no_interaction, with the
+  # necessary stratification
   model <- coxph(
     train_survival ~ CD147:strata(time_group) + CD9:strata(time_group) + DLG2 + HEBP2:strata(time_group) + HSD17B12 + NXT2:strata(time_group) + RACK1 + TXNDC5:strata(time_group),
     data=train,
@@ -334,7 +378,15 @@ no_interaction_model <- function(train, train_survival) {
 
 
 interaction_model <- function(train, train_survival) {
+  #' Train a cox proportional-hazard model, using interacting features
+  #' 
+  #' train data.frame: contains the expression features to model
+  #' train_survival double: the survival object for the training data
+  #' 
+  #' return List: the trained model
   
+  # The features below are genes_modelling_interaction, with the
+  # necessary stratification
   model <- coxph(
     train_survival ~ CD9:strata(time_group) + DLG2 + HEBP2:strata(time_group) + HSD17B12 + NXT2:strata(time_group) + TXNDC5:strata(time_group) + CD9:NXT2:strata(time_group) + NXT2:TXNDC5,
     data=train,
@@ -344,7 +396,77 @@ interaction_model <- function(train, train_survival) {
   return(model)
 }
 
-predict_risk_score <- function(model, train, validation, risk_score) {
+
+rf_model <- function(train, train_survival, genes_rf){
+  #' Train randfom forest survival model
+  #' 
+  #' train data.frame: contains the expression features to model
+  #' train_survival double: the survival object for the training data
+  #' genes_rf List(str): names of the genes to train the random forest model
+  #' 
+  #' return List: the trained model
+
+  genes_rf_joined <- paste(genes_rf, collapse=" + ")
+  
+  model <- rfsrc(
+    as.formula(paste("Surv(event_free_survival_days_5y, event_free_survival_5y) ~", genes_rf_joined)),
+    data = train, 
+    ntree = 150, 
+    mtry = 2, 
+    nodesize = 3,
+    nsplit = 1,
+    importance=TRUE
+  )
+
+  return(model)
+}
+
+
+tumourigenesis_model <- function(train, train_survival) {
+  #' Train a cox proportional-hazard model using the genes that affect the
+  #' tumourigenesis pathway
+  #' 
+  #' train data.frame: contains the expression features to model
+  #' train_survival double: the survival object for the training data
+  #' 
+  #' return List: the trained model
+  
+  model <- coxph(
+    train_survival ~ DLG2:strata(time_group) + IGSF10 + HEBP2:strata(time_group) + RACK1 + TXNDC5:strata(time_group),
+    data=train,
+    na.action=na.pass
+  )
+  return(model)
+}
+
+metastasis_model <- function(train, train_survival) {
+  #' Train a cox proportional-hazard model using the genes that affect the
+  #' metastasis pathway
+  #' 
+  #' train data.frame: contains the expression features to model
+  #' train_survival double: the survival object for the training data
+  #' 
+  #' return List: the trained model
+  
+  model <- coxph(
+    train_survival ~ HAPLN4 + CCDC125 + CD9:strata(time_group) + CNKSR3 +  FNBP1 + RACK1 + CD147,
+    data=train,
+    na.action=na.pass
+  )
+  return(model)
+}
+
+
+predict_risk_score_lm <- function(model, train, validation, risk_score) {
+  #' Predict a risk score, using a linear model, on the training and validation datasets
+  #' 
+  #' model List: the model to use to make the predictions
+  #' train data.frame: the training dataset
+  #' validation List(data.frame): the validation datasets
+  #' risk_score str: name of the risk score to predict
+  #' 
+  #' return List(data.frame): the training and validation datasets with their
+  #'                          newly predicted risk scores
   
   # Create the risk score for the training dataframe
   train[risk_score] <- predict(model, train)
@@ -359,6 +481,7 @@ predict_risk_score <- function(model, train, validation, risk_score) {
     validation[[i]][paste(risk_score, "low", sep="_")] <- validation[[i]][risk_score] < median_train_risk_score
   }
   
+  # Add the training and validation datasets to a list of results
   results <- list()
   results$train <- train
   results$validation <- validation
@@ -367,8 +490,88 @@ predict_risk_score <- function(model, train, validation, risk_score) {
 }
 
 
-prognostic_model <- function(train, train_survival, risk_score) {
+predict_risk_score_rf <- function(model_rf, train, validation, risk_score, genes_rf) {
+  #' Predict a risk score, using a random forest model, on the training
+  #' and validation datasets
+  #' 
+  #' model_rf List: the model to use to make the predictions
+  #' train data.frame: the training dataset
+  #' validation List(data.frame): the validation datasets
+  #' risk_score str: name of the risk score to predict
+  #' genes_rf List(str): names of the genes used to train the random forest model
+  #' 
+  #' return List(data.frame): the training and validation datasets with their
+  #'                          newly predicted risk scores
   
+  # Predict the risk scores for the training dataframe
+  train[risk_score] <- randomForestSRC::predict.rfsrc(model_rf, train[genes_rf])$predicted
+  train[paste(risk_score, "low", sep="_")] <- train[risk_score] < median(train[risk_score][[1]])
+  
+  # Calculate the median train risk score to be used as the high/low threshold
+  median_train_risk_score <- median(train[risk_score][[1]])
+  
+  # Add risk scores to the remaining dataframes
+  for (i in seq(length(results$validation))) {
+    validation[[i]][risk_score] <- randomForestSRC::predict.rfsrc(model_rf, validation[[i]][genes_rf])$predicted
+    validation[[i]][paste(risk_score, "low", sep="_")] <- validation[[i]][risk_score] < median_train_risk_score
+  }
+  
+  # Add the training and validation datasets to a list of results
+  results <- list()
+  results$train <- train
+  results$validation <- validation
+  
+  return(results)
+}
+
+scale_risk_scores <- function(train) {
+  #' Z-transform the risk scores that will be used to train another model
+  #' 
+  #' train data.frame: the training dataframe that is used to train models
+  #' 
+  #' return data.frame: the training dataframe with scaled risk scores
+  
+  train$risk_score_differentiation <- c(scale(train$risk_score_differentiation))
+  train$risk_score_immune_disregulation <- c(scale(train$risk_score_immune_disregulation))
+  train$risk_score_metabolism <- c(scale(train$risk_score_metabolism))
+  train$risk_score_metastasis <- c(scale(train$risk_score_metastasis))
+  train$risk_score_nuclear_transport <- c(scale(train$risk_score_nuclear_transport))
+  train$risk_score_tumourigenesis <- c(scale(train$risk_score_tumourigenesis))
+  train$risk_score_rf <- c(scale(train$risk_score_rf))
+  
+  return(train)
+}
+
+
+combined_functional_model <- function(train, train_survival) {
+  #' Train a cox proportional-hazard model using the risk scores from the
+  #' functional models to create a combined functional model
+  #' 
+  #' train data.frame: contains the risk scores to model
+  #' train_survival double: the survival object for the training data
+  #' 
+  #' return List: the trained model
+  
+  model_combine <- coxph(
+    train_survival ~ risk_score_tumourigenesis + risk_score_differentiation + risk_score_immune_disregulation + risk_score_metastasis + risk_score_metabolism + risk_score_nuclear_transport,
+    data=train,
+    na.action=na.pass
+  )
+  
+  return(model_combine)
+}
+
+
+prognostic_model <- function(train, train_survival, risk_score) {
+  #' Train a prognostic model
+  #' 
+  #' train data.frame: the data to train the prognostic model
+  #' train_survival double: the survival object for the training data
+  #' risk_score str: the name of the risk score to use to train the prognostic model
+  #' 
+  #' return List: the trained prognostic model
+  
+  # Identify the significant features for training the model
   features_significant <- multivariate_cox_regression(risk_score, train_survival, train, TRUE, FALSE)
   features_best <- aic_feature_selection(features_significant, train_survival, train, '')
   
@@ -379,7 +582,6 @@ prognostic_model <- function(train, train_survival, risk_score) {
       data=train,
       na.action=na.pass
     )
-    
   }
   else if (risk_score == "risk_score_interaction") {
     
@@ -389,48 +591,77 @@ prognostic_model <- function(train, train_survival, risk_score) {
       na.action=na.pass
     )
   }
+  else if (risk_score == "risk_score_rf") {
+    
+    model <- coxph(
+      train_survival ~ inss_stage_2 + inss_stage_3 + inss_stage_4:strata(time_group) + inss_stage_4S + under_18_months:strata(time_group) + risk_score_rf:strata(time_group),
+      data=train,
+      na.action=na.pass
+    )
+  }
   return(model)
 }
 
 
-add_five_year_cutoff <- function(results) {
+add_five_year_cutoff <- function(train, validation) {
+  #' Add the five-year survival data to the training and validation datasets.
+  #' 
+  #' train data.frame: the training dataset
+  #' validation data.frame: the validation datasets
+  #' 
+  #' return List(data.frame): the training and validation datasets with
+  #'                          five-year survival results
   
-  results$train$event_free_survival_5y <- results$train$event_free_survival
-  results$train$event_free_survival_days_5y <- results$train$event_free_survival_days
+  # Get the survival features
+  train$event_free_survival_5y <- train$event_free_survival
+  train$event_free_survival_days_5y <- train$event_free_survival_days
   
-  results$train$event_free_survival_5y[
-    (results$train$event_free_survival_days_5y > 365*5) & (results$train$event_free_survival_5y == 1)
+  # Update their values at the five-year mark
+  train$event_free_survival_5y[
+    (train$event_free_survival_days_5y > 365*5) & (train$event_free_survival_5y == 1)
   ] <- 0
-  results$train$event_free_survival_days_5y[results$train$event_free_survival_days_5y > 365*5] <- 365*5
+  train$event_free_survival_days_5y[
+    train$event_free_survival_days_5y > 365*5
+  ] <- 365*5
   
-  for (i in seq(length(results$validation))) {
-    results$validation[[i]]$event_free_survival_5y <- results$validation[[i]]$event_free_survival
-    results$validation[[i]]$event_free_survival_days_5y <- results$validation[[i]]$event_free_survival_days
+  # Do the same thing as above, but on the validation datasets
+  for (i in seq(length(validation))) {
+    validation[[i]]$event_free_survival_5y <- validation[[i]]$event_free_survival
+    validation[[i]]$event_free_survival_days_5y <- validation[[i]]$event_free_survival_days
     
-    results$validation[[i]]$event_free_survival_5y[
-      (results$validation[[i]]$event_free_survival_days_5y > 365*5) & (results$validation[[i]]$event_free_survival_5y == 1)
+    validation[[i]]$event_free_survival_5y[
+      (validation[[i]]$event_free_survival_days_5y > 365*5) & (validation[[i]]$event_free_survival_5y == 1)
     ] <- 0
-    results$validation[[i]]$event_free_survival_days_5y[results$validation[[i]]$event_free_survival_days_5y > 365*5] <- 365*5
+    validation[[i]]$event_free_survival_days_5y[validation[[i]]$event_free_survival_days_5y > 365*5] <- 365*5
   }
+  
+  # Add the training and validation datasets to a list of results
+  results <- list()
+  results$train <- train
+  results$validation <- validation
+  
   return(results)
 }
 
 
 compare_risk_scores <- function(data, data_names) {
+  #' Compare the performance of a set of risk scores on a list of datasets
+  #' using the AUC metric
+  #' 
+  #' data List(data.frame): datasets on which to measure the performance
+  #' data_names List(str): names of the datasets
   
   results <- list()
   
   for (risk_score in RISK_SCORES) {
-    
     print(risk_score)
-    
     auc_scores <- c()
     
-    for (ii in seq(length(data))) {
-
-      precrec_obj <- evalmod(
-        scores=data[[ii]][risk_score],
-        labels=data[[ii]]$event_free_survival_5y,
+    for (i in seq(length(data))) {
+      print(data_names[i])
+      precrec_obj <- precrec::evalmod(
+        scores=as.numeric(unlist(data[[i]][risk_score])),
+        labels=data[[i]]$event_free_survival_5y,
       )
       auc_score <- round(precrec::auc(precrec_obj)$auc[1], 4)
       auc_scores <- append(auc_scores, auc_score)
@@ -451,6 +682,8 @@ compare_risk_scores <- function(data, data_names) {
 
 
 kaplan_meier_plot <- function() {
+  #' Create a Kaplan Meier plot to measure the performance of a risk score
+  #' on a dataset
   
   results$validation[[1]]$event_free_survival <- as.numeric(results$validation[[1]]$event_free_survival)
   survival_object <- Surv(
@@ -483,6 +716,10 @@ kaplan_meier_plot <- function() {
 
 
 compare_auc_values <- function(data, samples) {
+  #' Test if the difference in AUC values between the models' risk scores and
+  #' the baseline model is statistically significant
+  #' 
+  #' data
   
   auc_scores <- vector()
   auc_scores_baseline <- vector()
@@ -511,6 +748,12 @@ compare_auc_values <- function(data, samples) {
 
 
 evaluate_validation_datasets_combinations <- function(results) {
+  #' Create a heatmap comparing the AUC scores using different combinations
+  #' of validation datasets and risk scores
+  #' 
+  #' results List(data.frame): contains the validation datasets
+  #' 
+  #' return List(data.frame): different combinations of the validation datasets
   
   # Identify the matching columns between datasets so that
   # they can be concatenated
@@ -521,10 +764,11 @@ evaluate_validation_datasets_combinations <- function(results) {
   validation_combos[[1]] <- results$validation[[1]][required_columns]
   validation_combos[[2]] <- results$validation[[2]][required_columns]
   validation_combos[[3]] <- results$validation[[3]][required_columns]
-  validation_combos[[4]] <- rbind(validation_combos[[1]], validation_combos[[2]])
-  validation_combos[[5]] <- rbind(validation_combos[[1]], validation_combos[[3]])
-  validation_combos[[6]] <- rbind(validation_combos[[2]], validation_combos[[3]])
-  validation_combos[[7]] <- rbind(validation_combos[[1]], validation_combos[[2]], validation_combos[[3]])
+  validation_combos[[4]] <- results$validation[[4]][required_columns]
+  validation_combos[[5]] <- rbind(validation_combos[[1]], validation_combos[[2]])
+  validation_combos[[6]] <- rbind(validation_combos[[1]], validation_combos[[3]])
+  validation_combos[[7]] <- rbind(validation_combos[[2]], validation_combos[[3]])
+  validation_combos[[8]] <- rbind(validation_combos[[1]], validation_combos[[2]], validation_combos[[3]])
   
   # Create a heatmap to compare the AUC scores across the
   # combination of datasets and risk scores
@@ -535,7 +779,12 @@ evaluate_validation_datasets_combinations <- function(results) {
 
 
 plot_time_dependent_roc_curves <- function(data, risk_score) {
+  #' Plot the 1, 3, and 5 year ROC curves for a dataset and risk score
+  #' 
+  #' data data.frame: contains the survival data and risk score
+  #' risk_score str: the risk score to be measured
   
+  # Create the 1, 3, and 5 year ROC objects
   roc_object_1 <- survivalROC(data$event_free_survival_days, 
                               data$event_free_survival, 
                               data[[risk_score]],
@@ -552,14 +801,17 @@ plot_time_dependent_roc_curves <- function(data, risk_score) {
                               predict.time = 365*5,
                               method = 'KM')
   
+  # Move the false positive and true positive data into dataframes
   df1 <- data.frame(fp=roc_object_1$FP, tp=roc_object_1$TP)
   df3 <- data.frame(fp=roc_object_3$FP, tp=roc_object_3$TP)
   df5 <- data.frame(fp=roc_object_5$FP, tp=roc_object_5$TP)
   
+  # Create annotations for the plot
   auc_label1 <- sprintf('AUC (1Y) = %.4f', roc_object_1$AUC)
   auc_label3 <- sprintf('AUC (3Y) = %.4f', roc_object_3$AUC)
   auc_label5 <- sprintf('AUC (5Y) = %.4f', roc_object_5$AUC)
   
+  # Create the plot
   (ggplot()
     + geom_line(data = df1, aes(fp, tp, color="AUC (1Y)"))
     + geom_line(data=df3, aes(fp, tp, color="AUC (3Y)"))
@@ -579,10 +831,17 @@ plot_time_dependent_roc_curves <- function(data, risk_score) {
 
 
 measure_auc_p_values <- function(data) {
+  #' Test if the difference in AUC values between the models' prognostic scores
+  #' and the baseline model's risk score is statistically significant
+  #' 
+  #' data List(data.frame): the datasets on which to measure the difference in AUC
   
+  # The prognostic scores to compare against the baseline risk score
   prognostic_scores <- c(
     "prognostic_score_no_interaction",
-    "prognostic_score_interaction"
+    "prognostic_score_interaction",
+    "prognostic_score_rf",
+    "risk_score_rf"
   )
   
   results <- list()
@@ -621,12 +880,19 @@ measure_auc_p_values <- function(data) {
 }
 
 
-# Prepare the data for training
+# Load the training and validation data
 train <- load_training_data()
-train_survival <- survival_data_train(train)
-
 validation <- load_validation_data()
+
+# Get the training and validation survival data
+train_survival <- survival_data_train(train)
 validation_survival <- survival_data_validation(validation)
+
+# Truncate the survival data to five years for measuring the performance
+# of the models
+results <- add_five_year_cutoff(train, validation)
+train <- results$train
+validation <- results$validation
 
 # Get the genes from the training dataset
 genes <- colnames(train)[14:length(colnames(train)) - 1]
@@ -634,6 +900,9 @@ genes <- colnames(train)[14:length(colnames(train)) - 1]
 # Identify the genes for modelling
 genes_modelling_no_interaction <- modelling_genes(genes, train, train_survival, FALSE)
 genes_modelling_interaction <- modelling_genes(genes, train, train_survival, TRUE)
+genes_rf <- c(
+  "HSD17B12", "TOX2", "FNBP1","IGSF10", "KCNQ3", "DLG2", "HAPLN4", "BASP1", "CD9", "CCDC125", "CNKSR3"
+)
 
 # Split the data to help keep the proportional hazards consistent over time
 train <- split_data_train(train, train_survival)
@@ -643,54 +912,98 @@ validation <- split_data_validation(validation, validation_survival)
 model_baseline <- baseline_model(train, train_survival)
 model_no_interaction <- no_interaction_model(train, train_survival)
 model_interaction <- interaction_model(train, train_survival)
+model_rf <- rf_model(train, train_survival, genes_rf)
+
+## Functional models
+model_differentiation <- coxph(train_survival ~ BASP1:strata(time_group) + IGSF10, data=train, na.action=na.pass)
+model_immune_disregulation <- coxph(train_survival ~ TOX2, data=train, na.action=na.pass)
+model_metabolism <- coxph(train_survival ~ HSD17B12, data=train, na.action=na.pass)
+model_metastasis <- metastasis_model(train, train_survival)
+model_nuclear_transport <- coxph(train_survival ~ NXT2:strata(time_group), data=train, na.action=na.pass)
+model_tumourigenesis <- tumourigenesis_model(train, train_survival)
 
 # Check that all models meet the assumptions of the Cox proportional hazards model
 zph_model_baseline <- cox.zph(model_baseline)
 zph_model_no_interaction <- cox.zph(model_no_interaction)
 zph_model_interaction <- cox.zph(model_interaction)
+zph_model_differentiation <- cox.zph(model_differentiation)
+zph_model_immune_disregulation <- cox.zph(model_immune_disregulation)
+zph_model_metabolism <- cox.zph(model_metabolism)
+zph_model_metastasis <- cox.zph(model_metastasis)
+zph_model_nuclear_transport <- cox.zph(model_nuclear_transport)
+zph_model_tumourigenesis <- cox.zph(model_tumourigenesis)
 
 # All values should be below 0.05
 print(zph_model_baseline)
 print(zph_model_no_interaction)
 print(zph_model_interaction)
+print(zph_model_tumourigenesis)
+print(zph_model_metastasis)
+print(zph_model_differentiation)
+print(zph_model_immune_disregulation)
+print(zph_model_metabolism)
+print(zph_model_nuclear_transport)
 
 # Plot the diagnostic plots to confirm there is no trend
 ggcoxzph(zph_model_baseline)
 ggcoxzph(zph_model_no_interaction)
 ggcoxzph(zph_model_interaction)
+ggcoxzph(zph_model_tumourigenesis)
+ggcoxzph(zph_model_metastasis)
+ggcoxzph(zph_model_differentiation)
+ggcoxzph(zph_model_immune_disregulation)
+ggcoxzph(zph_model_metabolism)
+ggcoxzph(zph_model_nuclear_transport)
 
 # Add risk scores
-results <- predict_risk_score(model_baseline, train, validation, "risk_score_baseline")
-results <- predict_risk_score(model_no_interaction, results$train, results$validation, "risk_score_no_interaction")
-results <- predict_risk_score(model_interaction, results$train, results$validation, "risk_score_interaction")
+results <- predict_risk_score_lm(model_baseline, train, validation, "risk_score_baseline")
+results <- predict_risk_score_lm(model_no_interaction, results$train, results$validation, "risk_score_no_interaction")
+results <- predict_risk_score_lm(model_interaction, results$train, results$validation, "risk_score_interaction")
+results <- predict_risk_score_lm(model_differentiation, results$train, results$validation, "risk_score_differentiation")
+results <- predict_risk_score_lm(model_immune_disregulation, results$train, results$validation, "risk_score_immune_disregulation")
+results <- predict_risk_score_lm(model_metabolism, results$train, results$validation, "risk_score_metabolism")
+results <- predict_risk_score_lm(model_metastasis, results$train, results$validation, "risk_score_metastasis")
+results <- predict_risk_score_lm(model_nuclear_transport, results$train, results$validation, "risk_score_nuclear_transport")
+results <- predict_risk_score_lm(model_tumourigenesis, results$train, results$validation, "risk_score_tumourigenesis")
+results <- predict_risk_score_rf(model_rf, results$train, results$validation, "risk_score_rf", genes_rf)
 
 # Update data_split_train with the risk scores
 train <- results$train
 validation <- results$validation
 
+# Scale the risk scores
+train <- scale_risk_scores(train)
+
+# Train the combined functional model
+model_combine <- combined_functional_model(train, train_survival)
+
 # Train the prognostic models
 model_prognostic_no_interaction <- prognostic_model(train, train_survival, "risk_score_no_interaction")
 model_prognostic_interaction <- prognostic_model(train, train_survival, "risk_score_interaction")
+model_prognostic_rf <- prognostic_model(train, train_survival, "risk_score_rf")
 
 # Check that all models meet the assumptions of the Cox proportional hazards model
+zph_model_combine <- cox.zph(model_combine)
 zph_model_prognostic_no_interaction <- cox.zph(model_prognostic_no_interaction)
 zph_model_prognostic_interaction <- cox.zph(model_prognostic_interaction)
+zph_model_prognostic_rf <- cox.zph(model_prognostic_rf)
 
 # All values should be below 0.05
+print(zph_model_combine)
 print(zph_model_prognostic_no_interaction)
 print(zph_model_prognostic_interaction)
+print(zph_model_prognostic_rf)
 
 # Plot the diagnostic plots to confirm there is no trend
+ggcoxzph(zph_model_combine)
 ggcoxzph(zph_model_prognostic_no_interaction)
 ggcoxzph(zph_model_prognostic_interaction)
+ggcoxzph(zph_model_prognostic_rf)
 
 # Add prognostic scores
-results <- predict_risk_score(model_prognostic_no_interaction, train, validation, "prognostic_score_no_interaction")
-results <- predict_risk_score(model_prognostic_interaction, results$train, results$validation, "prognostic_score_interaction")
-
-# Truncate the survival data to five years for measuring the performance
-# of the models
-results <- add_five_year_cutoff(results)
+results <- predict_risk_score_lm(model_prognostic_no_interaction, train, validation, "prognostic_score_no_interaction")
+results <- predict_risk_score_lm(model_prognostic_interaction, results$train, results$validation, "prognostic_score_interaction")
+results <- predict_risk_score_lm(model_prognostic_rf, results$train, results$validation, "prognostic_score_rf")
 
 # Combine train and validation into one list
 data <- list()
@@ -714,6 +1027,7 @@ pheatmap(
 )
 
 # Plot hazard scores from models
+plot_ggforest(model_prognostic_no_interaction, data=train)
 plot_ggforest(model_prognostic_interaction, data=train)
 
 # Check number of high and low prognostic risk scores
@@ -734,8 +1048,14 @@ ggplot(results$validation[[4]], aes(x=prognostic_score_interaction_low, y=event_
 validation_combos <- evaluate_validation_datasets_combinations(results)
 
 # Plot the 1, 3, and 5 year ROC curves for a dataset and risk score
-plot_time_dependent_roc_curves(results$validation[[1]], "prognostic_score_interaction")
+plot_time_dependent_roc_curves(results$validation[[1]], "risk_score_rf")
 
 # Measure the p-values for the ROC curves of the prognostic and baseline models
 # across the combinations of validation datasets
 measure_auc_p_values(validation_combos)
+
+# Identify all of the genes used in the prognostic models
+genes_all <- c(genes_modelling_interaction, genes_modelling_no_interaction, genes_rf)
+genes_all <- genes_all[!duplicated(genes_all)]
+genes_all <- Filter(function(x) !any(grepl(":", x)), genes_all)
+

@@ -1,7 +1,9 @@
+# Prepare the target Wilms tumor dataset for analysis
+
 library(fastDummies)
 
 
-PATH <- "~/Downloads/wt_target_2018_pub/"
+PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
 
 
 load_and_prepare_patient_data <- function() {
