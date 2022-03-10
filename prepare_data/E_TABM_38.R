@@ -9,7 +9,7 @@ load_and_prepare_patient_data <- function() {
   #' return data.frame: the patient data
   
   # Downloaded from: https://www.ebi.ac.uk/arrayexpress/experiments/E-TABM-38/files/
-  patients <- read.csv(file.path(PATH, "/E-TABM-38.sdrf.txt"), sep="\t")
+  patients <- read.csv(file.path(PATH, "E_TABM_38/E-TABM-38.sdrf.txt"), sep="\t")
   
   # Filter to relevant columns
   patients <- patients[c(
@@ -97,7 +97,7 @@ load_and_prepare_expression_data <- function() {
   # Load the expression data
   # Downloaded from: https://www.ebi.ac.uk/arrayexpress/experiments/E-TABM-38/files/
   # File name: E-TABM-38.processed.1.zip
-  expression_data <- read.csv(file.path(PATH, "Warnat19092005_E-NBDE-1_FGEDM.txt"), sep="\t")
+  expression_data <- read.csv(file.path(PATH, "E_TABM_38/Warnat19092005_E-NBDE-1_FGEDM.txt"), sep="\t")
   
   # Remove unncessary row
   expression_data <- expression_data[-c(1),]
@@ -111,7 +111,7 @@ load_and_prepare_expression_data <- function() {
   expression_data$gene <- gene_names
   
   # Filter to the relevant genes
-  gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
+  gene_list <- read.csv(file.path(PATH, "gene_list/gene_list.csv"))
   expression_data <- expression_data[expression_data$gene %in% gene_list$external_gene_name,]
   
   # Transpose the dataframe
@@ -134,8 +134,8 @@ get_gene_names <- function() {
   #' return List(str): gene names used in the study 
   
   # Downloaded from: https://www.ebi.ac.uk/arrayexpress/experiments/E-TABM-38/files/
-  gene_names <- read.csv(file.path(PATH, "A-MEXP-255_comments.txt"), sep="\t")
-  controls_and_experiments <- read.csv(file.path(PATH, "A-MEXP-255.adf.txt"), sep="\t", skip=23)
+  gene_names <- read.csv(file.path(PATH, "E_TABM_38/A-MEXP-255_comments.txt"), sep="\t")
+  controls_and_experiments <- read.csv(file.path(PATH, "E_TABM_38/A-MEXP-255.adf.txt"), sep="\t", skip=23)
   
   # Identify the controls rows for which we do not have expression data
   n_control_rows <- sum(controls_and_experiments$Reporter.Group.role. == "CONTROL") + 1
@@ -159,4 +159,4 @@ patients <- merge(
 )
 
 # Save the patient data
-write.csv(patients, file.path(PATH, "E_TABM_38.csv"), row.names=FALSE)
+write.csv(patients, file.path(PATH, "processed/E_TABM_38.csv"), row.names=FALSE)

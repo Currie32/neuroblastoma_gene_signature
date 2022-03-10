@@ -103,7 +103,8 @@ load_and_prepare_expression_data <- function(gene_list) {
   
   # Load expression data
   # Downloaded from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE49711
-  df <- read.csv(file.path(PATH, "GSE49711_SEQC_NB_TUC_G_log2.txt"), sep='\t')
+  # Needs to be downloaded as it is too large to store on github
+  df <- read.csv(file.path(PATH, "GSE49711/GSE49711_SEQC_NB_TUC_G_log2.txt"), sep='\t')
   
   # Filter to genes in the gene list
   df <- df[df$X00gene_id %in% gene_list,]
@@ -136,7 +137,7 @@ load_and_prepare_expression_data <- function(gene_list) {
 
 
 # Load differentially expressed genes
-gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
+gene_list <- read.csv(file.path(PATH, "gene_list/gene_list.csv"))
 
 # Get the patient data
 patients <- load_and_prepare_patient_data()
@@ -152,4 +153,4 @@ patients <- merge(
 )
 
 # Save the patient data
-write.csv(patients, file.path(PATH, "GSE49711.csv"), row.names=FALSE)
+write.csv(patients, file.path(PATH, "processed/GSE49711.csv"), row.names=FALSE)

@@ -66,7 +66,7 @@ merge_expression_and_patient_data <- function(genes, gse_data, patients_traits) 
   # Merge the phenotype and expression data
   patients_data <- merge(
     patients_traits,
-    gse_data,
+    expression_data,
     on="sequence_id"
   )
   
@@ -232,15 +232,15 @@ is_under_18_months <- function(df) {
 
 
 # Load the datasets used in the analysis
-GSE49711 <- read.csv(file.path(PATH, "GSE49711.csv"))
-GSE62564 <- read.csv(file.path(PATH, "GSE62564.csv"))
-GSE85047 <- read.csv(file.path(PATH, "GSE85047.csv"))
-target_2018 <- read.csv(file.path(PATH, "target_2018.csv"))
-E_TABM_38 <- read.csv(file.path(PATH, "E_TABM_38.csv"))
-wilms_tumor <- read.csv(file.path(PATH, "wilms_tumor.csv"))
+GSE49711 <- read.csv(file.path(PATH, "processed/GSE49711.csv"))
+GSE62564 <- read.csv(file.path(PATH, "processed/GSE62564.csv"))
+GSE85047 <- read.csv(file.path(PATH, "processed/GSE85047.csv"))
+target_2018 <- read.csv(file.path(PATH, "processed/target_2018.csv"))
+E_TABM_38 <- read.csv(file.path(PATH, "processed/E_TABM_38.csv"))
+wilms_tumor <- read.csv(file.path(PATH, "processed/wilms_tumor.csv"))
 
 # Load the names of the differentially expressed genes
-genes <- read.csv(file.path(PATH, "gene_list.csv"))$external_gene_name
+genes <- read.csv(file.path(PATH, "gene_list/gene_list.csv"))$external_gene_name
 
 # Get the patient traits from the training datasets
 patients_traits <- extract_patient_traits(GSE49711, GSE62564)
@@ -281,8 +281,8 @@ E_TABM_38_corr$under_18_months <- is_under_18_months(E_TABM_38_corr)
 wilms_tumor_corr$under_18_months <- is_under_18_months(wilms_tumor_corr)
 
 # Save datasets
-write.csv(train_corr, file.path(PATH, "train.csv"), row.names=FALSE)
-write.csv(GSE85047_corr, file.path(PATH, "test_GSE85047.csv"), row.names=FALSE)
-write.csv(target_2018_corr, file.path(PATH, "test_target.csv"), row.names=FALSE)
-write.csv(E_TABM_38_corr, file.path(PATH, "test_E_TABM_38.csv"), row.names=FALSE)
-write.csv(wilms_tumor_corr, file.path(PATH, "test_wilms_tumor.csv"), row.names=FALSE)
+write.csv(train_corr, file.path(PATH, "modelling/train.csv"), row.names=FALSE)
+write.csv(GSE85047_corr, file.path(PATH, "modelling/test_GSE85047.csv"), row.names=FALSE)
+write.csv(target_2018_corr, file.path(PATH, "modelling/test_target.csv"), row.names=FALSE)
+write.csv(E_TABM_38_corr, file.path(PATH, "modelling/test_E_TABM_38.csv"), row.names=FALSE)
+write.csv(wilms_tumor_corr, file.path(PATH, "modelling/test_wilms_tumor.csv"), row.names=FALSE)

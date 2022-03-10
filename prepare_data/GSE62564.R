@@ -45,8 +45,9 @@ load_and_prepare_expression_data <- function(gene_list){
   
   # Load the patients' expression data
   # Downloaded from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE62564
+  # Needs to be downloaded as it is too large to store on github
   expression_data <- read.table(
-    file.path(PATH, "GSE62564_SEQC_NB_RNA-Seq_log2RPM.txt"),
+    file.path(PATH, "GSE62564/GSE62564_SEQC_NB_RNA-Seq_log2RPM.txt"),
     header=TRUE,
     sep="\t"
   )
@@ -197,7 +198,7 @@ correct_data_types <- function(df) {
 
 
 # Load differentially expressed genes
-gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
+gene_list <- read.csv(file.path(PATH, "gene_list/gene_list.csv"))
 
 # Create join table for merging the gene_list with the
 # gene expression data
@@ -220,4 +221,4 @@ patients <- merge(
 )
 
 # Save the patient data
-write.csv(patients, file.path(PATH, "GSE62564.csv"), row.names=FALSE)
+write.csv(patients, file.path(PATH, "processed/GSE62564.csv"), row.names=FALSE)

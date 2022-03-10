@@ -13,7 +13,7 @@ library(survivalROC)
 library(survminer)
 
 
-PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
+PATH <- "~/Imperial/neuroblastoma_gene_signature/data/modelling"
 P_VALUE = 0.005
 
 # The day to split the training and testing data so that
@@ -53,6 +53,7 @@ load_training_data <- function() {
   return(train)
 }
 
+
 load_validation_data <- function() {
   
   # Load the datasets
@@ -91,6 +92,47 @@ survival_data_validation <- function(data) {
   }
   
   return(survival)
+}
+
+
+add_five_year_cutoff <- function(train, validation) {
+  #' Add the five-year survival data to the training and validation datasets.
+  #' 
+  #' train data.frame: the training dataset
+  #' validation data.frame: the validation datasets
+  #' 
+  #' return List(data.frame): the training and validation datasets with
+  #'                          five-year survival results
+  
+  # Get the survival features
+  train$event_free_survival_5y <- train$event_free_survival
+  train$event_free_survival_days_5y <- train$event_free_survival_days
+  
+  # Update their values at the five-year mark
+  train$event_free_survival_5y[
+    (train$event_free_survival_days_5y > 365*5) & (train$event_free_survival_5y == 1)
+  ] <- 0
+  train$event_free_survival_days_5y[
+    train$event_free_survival_days_5y > 365*5
+  ] <- 365*5
+  
+  # Do the same thing as above, but on the validation datasets
+  for (i in seq(length(validation))) {
+    validation[[i]]$event_free_survival_5y <- validation[[i]]$event_free_survival
+    validation[[i]]$event_free_survival_days_5y <- validation[[i]]$event_free_survival_days
+    
+    validation[[i]]$event_free_survival_5y[
+      (validation[[i]]$event_free_survival_days_5y > 365*5) & (validation[[i]]$event_free_survival_5y == 1)
+    ] <- 0
+    validation[[i]]$event_free_survival_days_5y[validation[[i]]$event_free_survival_days_5y > 365*5] <- 365*5
+  }
+  
+  # Add the training and validation datasets to a list of results
+  results <- list()
+  results$train <- train
+  results$validation <- validation
+  
+  return(results)
 }
 
 
@@ -397,20 +439,28 @@ interaction_model <- function(train, train_survival) {
 }
 
 
-rf_model <- function(train, train_survival, genes_rf){
+rf_model <- function(train, genes_rf){
   #' Train randfom forest survival model
   #' 
   #' train data.frame: contains the expression features to model
-  #' train_survival double: the survival object for the training data
   #' genes_rf List(str): names of the genes to train the random forest model
   #' 
   #' return List: the trained model
+  
+  train_rf <- train[1:498, ]
+  set.seed(1)
+  
+  n <- round(nrow(train_rf)*0.7)
+  train_ix <- sample(1:nrow(train_rf), n, replace=FALSE)
+  
+  #create train/test
+  train_rf <- train_rf[train_ix, ]
 
   genes_rf_joined <- paste(genes_rf, collapse=" + ")
   
   model <- rfsrc(
     as.formula(paste("Surv(event_free_survival_days_5y, event_free_survival_5y) ~", genes_rf_joined)),
-    data = train, 
+    data = train_rf, 
     ntree = 150, 
     mtry = 2, 
     nodesize = 3,
@@ -603,47 +653,6 @@ prognostic_model <- function(train, train_survival, risk_score) {
 }
 
 
-add_five_year_cutoff <- function(train, validation) {
-  #' Add the five-year survival data to the training and validation datasets.
-  #' 
-  #' train data.frame: the training dataset
-  #' validation data.frame: the validation datasets
-  #' 
-  #' return List(data.frame): the training and validation datasets with
-  #'                          five-year survival results
-  
-  # Get the survival features
-  train$event_free_survival_5y <- train$event_free_survival
-  train$event_free_survival_days_5y <- train$event_free_survival_days
-  
-  # Update their values at the five-year mark
-  train$event_free_survival_5y[
-    (train$event_free_survival_days_5y > 365*5) & (train$event_free_survival_5y == 1)
-  ] <- 0
-  train$event_free_survival_days_5y[
-    train$event_free_survival_days_5y > 365*5
-  ] <- 365*5
-  
-  # Do the same thing as above, but on the validation datasets
-  for (i in seq(length(validation))) {
-    validation[[i]]$event_free_survival_5y <- validation[[i]]$event_free_survival
-    validation[[i]]$event_free_survival_days_5y <- validation[[i]]$event_free_survival_days
-    
-    validation[[i]]$event_free_survival_5y[
-      (validation[[i]]$event_free_survival_days_5y > 365*5) & (validation[[i]]$event_free_survival_5y == 1)
-    ] <- 0
-    validation[[i]]$event_free_survival_days_5y[validation[[i]]$event_free_survival_days_5y > 365*5] <- 365*5
-  }
-  
-  # Add the training and validation datasets to a list of results
-  results <- list()
-  results$train <- train
-  results$validation <- validation
-  
-  return(results)
-}
-
-
 compare_risk_scores <- function(data, data_names) {
   #' Compare the performance of a set of risk scores on a list of datasets
   #' using the AUC metric
@@ -654,11 +663,11 @@ compare_risk_scores <- function(data, data_names) {
   results <- list()
   
   for (risk_score in RISK_SCORES) {
-    print(risk_score)
+
     auc_scores <- c()
     
     for (i in seq(length(data))) {
-      print(data_names[i])
+
       precrec_obj <- precrec::evalmod(
         scores=as.numeric(unlist(data[[i]][risk_score])),
         labels=data[[i]]$event_free_survival_5y,
@@ -712,38 +721,6 @@ kaplan_meier_plot <- function() {
   # summary(fit_train)$table
   # ggsurvplot(fit_train, fun="cloglog")
   # ggcoxdiagnostics(model, type="schoenfeld")
-}
-
-
-compare_auc_values <- function(data, samples) {
-  #' Test if the difference in AUC values between the models' risk scores and
-  #' the baseline model is statistically significant
-  #' 
-  #' data
-  
-  auc_scores <- vector()
-  auc_scores_baseline <- vector()
-  
-  for (i in 1:samples) {
-    df_sample <- data[sample(nrow(data), length(data), replace=TRUE), ]
-
-    precrec_obj <- evalmod(
-      scores=df_sample$prognostic_score_interaction,
-      labels=df_sample$event_free_survival,
-    )
-    precrec_obj_baseline <- evalmod(
-      scores=df_sample$risk_score_baseline,
-      labels=df_sample$event_free_survival,
-    )
-    
-    auc_score <- auc(precrec_obj)$aucs[1]
-    auc_scores <- append(auc_scores, auc_score)
-    
-    auc_score_baseline <- auc(precrec_obj_baseline)$aucs[1]
-    auc_scores_baseline <- append(auc_scores_baseline, auc_score_baseline)
-  }
-  
-  t.test(auc_scores, auc_scores_baseline, alternative="greater")
 }
 
 
@@ -840,8 +817,7 @@ measure_auc_p_values <- function(data) {
   prognostic_scores <- c(
     "prognostic_score_no_interaction",
     "prognostic_score_interaction",
-    "prognostic_score_rf",
-    "risk_score_rf"
+    "prognostic_score_rf"
   )
   
   results <- list()
@@ -895,14 +871,17 @@ train <- results$train
 validation <- results$validation
 
 # Get the genes from the training dataset
-genes <- colnames(train)[14:length(colnames(train)) - 1]
+genes <- colnames(train)[16:length(colnames(train)) - 3]
 
 # Identify the genes for modelling
 genes_modelling_no_interaction <- modelling_genes(genes, train, train_survival, FALSE)
 genes_modelling_interaction <- modelling_genes(genes, train, train_survival, TRUE)
 genes_rf <- c(
-  "HSD17B12", "TOX2", "FNBP1","IGSF10", "KCNQ3", "DLG2", "HAPLN4", "BASP1", "CD9", "CCDC125", "CNKSR3"
+  "BASP1", "CCDC125", "CD9", "CNKSR3", "DLG2", "FNBP1", "HAPLN4", "HSD17B12", "IGSF10", "KCNQ3", "TOX2"
 )
+
+# Train the random forest model with the split data
+model_rf <- rf_model(train, genes_rf)
 
 # Split the data to help keep the proportional hazards consistent over time
 train <- split_data_train(train, train_survival)
@@ -912,7 +891,6 @@ validation <- split_data_validation(validation, validation_survival)
 model_baseline <- baseline_model(train, train_survival)
 model_no_interaction <- no_interaction_model(train, train_survival)
 model_interaction <- interaction_model(train, train_survival)
-model_rf <- rf_model(train, train_survival, genes_rf)
 
 ## Functional models
 model_differentiation <- coxph(train_survival ~ BASP1:strata(time_group) + IGSF10, data=train, na.action=na.pass)
@@ -1048,7 +1026,7 @@ ggplot(results$validation[[4]], aes(x=prognostic_score_interaction_low, y=event_
 validation_combos <- evaluate_validation_datasets_combinations(results)
 
 # Plot the 1, 3, and 5 year ROC curves for a dataset and risk score
-plot_time_dependent_roc_curves(results$validation[[1]], "risk_score_rf")
+plot_time_dependent_roc_curves(results$validation[[1]], "prognostic_score_rf")
 
 # Measure the p-values for the ROC curves of the prognostic and baseline models
 # across the combinations of validation datasets

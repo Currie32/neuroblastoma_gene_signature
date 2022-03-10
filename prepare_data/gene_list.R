@@ -2,7 +2,7 @@
 
 library(data.table)
 
-PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
+PATH <- "~/Imperial/neuroblastoma_gene_signature/data/gene_list/"
 
 # Load the gene list datasets and only the required columns
 edge_r <- data.frame(fread(

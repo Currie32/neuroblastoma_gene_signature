@@ -14,14 +14,14 @@ load_and_prepare_patient_data <- function() {
   # Load header row
   # Downloaded from https://www.cbioportal.org/study/summary?id=nbl_target_2018_pub
   headers <- read.csv(
-    file.path(PATH, "data_clinical_patient.txt"),
+    file.path(PATH, "target_neuroblastoma/data_clinical_patient.txt"),
     nrows = 1,
     sep="\t"
   )
   
   # Load data, but skip first five rows since they do not contain the data
   patients <- read.csv(
-    file.path(PATH, "data_clinical_patient.txt"),
+    file.path(PATH, "target_neuroblastoma/data_clinical_patient.txt"),
     skip=5,
     header=F,
     sep="\t"
@@ -123,7 +123,7 @@ load_and_prepare_expression_data <- function(gene_list) {
   # Load expression data
   # Downloaded from https://www.cbioportal.org/study/summary?id=nbl_target_2018_pub
   df <- read.csv(
-    file.path(PATH, "data_mrna_seq_rpkm_zscores_ref_all_samples.txt"),
+    file.path(PATH, "target_neuroblastoma/data_mrna_seq_rpkm_zscores_ref_all_samples.txt"),
     sep="\t"
   )
   
@@ -177,7 +177,7 @@ load_and_prepare_expression_data <- function(gene_list) {
 patients <- load_and_prepare_patient_data()
 
 # Load differentially expressed genes
-gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
+gene_list <- read.csv(file.path(PATH, "gene_list/gene_list.csv"))
 
 # Get the gene expression data
 expression_data <- load_and_prepare_expression_data(gene_list$external_gene_name)
@@ -190,4 +190,4 @@ patients <- merge(
 )
 
 # Save the patient data
-write.csv(patients, file.path(PATH, "target_2018.csv"), row.names=FALSE)
+write.csv(patients, file.path(PATH, "processed/target_2018.csv"), row.names=FALSE)

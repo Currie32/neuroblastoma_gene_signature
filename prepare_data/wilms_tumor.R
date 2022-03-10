@@ -14,7 +14,7 @@ load_and_prepare_patient_data <- function() {
   # Load header row
   # Downloaded from: https://www.cbioportal.org/study/summary?id=wt_target_2018_pub
   headers <- read.csv(
-    file.path(PATH, "data_clinical_patient.txt"),
+    file.path(PATH, "wilms_tumor/data_clinical_patient.txt"),
     nrows = 1,
     header=F,
     sep="\t"
@@ -22,7 +22,7 @@ load_and_prepare_patient_data <- function() {
   
   # Load data, but skip first five rows since they do not contain the data
   patients <- read.csv(
-    file.path(PATH, "data_clinical_patient.txt"),
+    file.path(PATH, "wilms_tumor/data_clinical_patient.txt"),
     skip=5,
     header=F,
     sep="\t"
@@ -114,7 +114,7 @@ load_and_prepare_expression_data <- function(gene_list) {
   # Load expression data
   # Downloaded from: https://www.cbioportal.org/study/summary?id=wt_target_2018_pub
   df <- read.csv(
-    file.path(PATH, "data_mrna_seq_rpkm_zscores_ref_all_samples.txt"),
+    file.path(PATH, "wilms_tumor/data_mrna_seq_rpkm_zscores_ref_all_samples.txt"),
     sep="\t"
   )
   
@@ -167,7 +167,7 @@ load_and_prepare_expression_data <- function(gene_list) {
 }
 
 # Load differentially expressed genes
-gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
+gene_list <- read.csv(file.path(PATH, "gene_list/gene_list.csv"))
 
 # Load the patient data
 patients <- load_and_prepare_patient_data()
@@ -183,4 +183,4 @@ patients <- merge(
 )
 
 # Save the patient data
-write.csv(patients, file.path(PATH, "wilms_tumor.csv"), row.names=FALSE)
+write.csv(patients, file.path(PATH, "processed/wilms_tumor.csv"), row.names=FALSE)

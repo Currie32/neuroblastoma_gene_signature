@@ -182,7 +182,7 @@ gene_names <- function(gse) {
 
 
 # Load differentially expressed genes
-gene_list <- read.csv(file.path(PATH, "gene_list.csv"))
+gene_list <- read.csv(file.path(PATH, "gene_list/gene_list.csv"))
 
 # Load GEO data
 gse <- getGEO("GSE85047")
@@ -199,5 +199,4 @@ patients <- merge(
 )
 
 # Save the patient data
-write.csv(patients, file.path(PATH, "GSE85047.csv"), row.names=FALSE)
-
+write.csv(patients, file.path(PATH, "processed/GSE85047.csv"), row.names=FALSE)
