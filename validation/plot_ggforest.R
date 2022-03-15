@@ -10,6 +10,11 @@ plot_ggforest <- function (
   noDigits = 2
 ) 
 {
+  
+  names(model$coefficients) <- gsub(
+    "strata\\(time_group\\)", "", names(model$coefficients)
+  )
+  
   conf.high <- conf.low <- estimate <- NULL
   stopifnot(inherits(model, "coxph"))
   terms <- names(model$coefficients)

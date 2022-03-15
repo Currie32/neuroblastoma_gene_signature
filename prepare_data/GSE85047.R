@@ -109,7 +109,7 @@ prepare_expression_data <- function(gse, gene_list) {
   # Extract the expression data
   expression_data <- gse[["GSE85047_series_matrix.txt.gz"]]@assayData[["exprs"]]
   expression_data <- data.frame(expression_data)
-
+  
   # Remove rows that are missing a gene name
   expression_data <- expression_data[genes != "",]
   genes <- genes[genes != ""]

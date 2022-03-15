@@ -1,5 +1,6 @@
 source("~/Imperial/neuroblastoma_gene_signature/validation/plot_ggforest.R")
 
+library(grid)
 library(ggplot2)
 library(MuMIn)
 library(pheatmap)
@@ -11,6 +12,7 @@ library(stringr)
 library(survival)
 library(survivalROC)
 library(survminer)
+library(VennDiagram)
 
 
 PATH <- "~/Imperial/neuroblastoma_gene_signature/data/modelling"
@@ -27,12 +29,6 @@ RISK_SCORES <- c(
   "risk_score_no_interaction",
   "risk_score_interaction",
   "risk_score_rf",
-  "risk_score_differentiation",
-  "risk_score_immune_disregulation",
-  "risk_score_metabolism",
-  "risk_score_metastasis",
-  "risk_score_nuclear_transport",
-  "risk_score_tumourigenesis",
   "prognostic_score_no_interaction",
   "prognostic_score_interaction",
   "prognostic_score_rf"
@@ -185,7 +181,7 @@ modelling_genes <- function(genes, train, train_survival, interaction) {
   #' interaction bool: TRUE if the interaction step should be used
   #' 
   #' return List(str): names of the most predictive genes
-  
+
   genes_candidate <- univariate_cox_regression(genes, train, train_survival)
   genes_significant <- multivariate_cox_regression(genes_candidate, train_survival, train, FALSE, FALSE)
   
@@ -223,10 +219,12 @@ univariate_cox_regression <- function(genes, train, train_survival) {
     # Only add a gene to the list of candidates if its p-value is
     # under the threshold
     p_value <- summary(result)$coefficients[5]
+    
     if (p_value <= P_VALUE) {
       candidate_genes <- append(candidate_genes, gene)
     }
   }
+  paste(candidate_genes, collapse = ', ')
   
   return(candidate_genes)
 }
@@ -410,7 +408,7 @@ no_interaction_model <- function(train, train_survival) {
   # The features below are genes_modelling_no_interaction, with the
   # necessary stratification
   model <- coxph(
-    train_survival ~ CD147:strata(time_group) + CD9:strata(time_group) + DLG2 + HEBP2:strata(time_group) + HSD17B12 + NXT2:strata(time_group) + RACK1 + TXNDC5:strata(time_group),
+    train_survival ~ CD147:strata(time_group) + CD9:strata(time_group) + HEBP2:strata(time_group) + HSD17B12 + NXT2:strata(time_group) + RACK1 + TXNDC5:strata(time_group),
     data=train,
     na.action=na.pass
   )
@@ -430,7 +428,7 @@ interaction_model <- function(train, train_survival) {
   # The features below are genes_modelling_interaction, with the
   # necessary stratification
   model <- coxph(
-    train_survival ~ CD9:strata(time_group) + DLG2 + HEBP2:strata(time_group) + HSD17B12 + NXT2:strata(time_group) + TXNDC5:strata(time_group) + CD9:NXT2:strata(time_group) + NXT2:TXNDC5,
+    train_survival ~ CD9:strata(time_group) + HEBP2:strata(time_group) + HSD17B12 + NXT2:strata(time_group) + TXNDC5:strata(time_group) + NXT2:TXNDC5 + CD9:HSD17B12,
     data=train,
     na.action=na.pass
   )
@@ -447,17 +445,22 @@ rf_model <- function(train, genes_rf){
   #' 
   #' return List: the trained model
   
+  # Subset to GSE49711
   train_rf <- train[1:498, ]
   set.seed(1)
   
+  # Split the data into a training and testing set for parameter optimisation
   n <- round(nrow(train_rf)*0.7)
   train_ix <- sample(1:nrow(train_rf), n, replace=FALSE)
   
-  #create train/test
+  # Create the training set
+  # No need for testing since parameter optimisation is in another script
   train_rf <- train_rf[train_ix, ]
 
+  # Join the random forest genes into a single string
   genes_rf_joined <- paste(genes_rf, collapse=" + ")
   
+  # Train the model
   model <- rfsrc(
     as.formula(paste("Surv(event_free_survival_days_5y, event_free_survival_5y) ~", genes_rf_joined)),
     data = train_rf, 
@@ -482,12 +485,13 @@ tumourigenesis_model <- function(train, train_survival) {
   #' return List: the trained model
   
   model <- coxph(
-    train_survival ~ DLG2:strata(time_group) + IGSF10 + HEBP2:strata(time_group) + RACK1 + TXNDC5:strata(time_group),
+    train_survival ~ HEBP2:strata(time_group) + IGSF10 + IQCE + RACK1 + TXNDC5:strata(time_group),
     data=train,
     na.action=na.pass
   )
   return(model)
 }
+
 
 metastasis_model <- function(train, train_survival) {
   #' Train a cox proportional-hazard model using the genes that affect the
@@ -499,7 +503,7 @@ metastasis_model <- function(train, train_survival) {
   #' return List: the trained model
   
   model <- coxph(
-    train_survival ~ HAPLN4 + CCDC125 + CD9:strata(time_group) + CNKSR3 +  FNBP1 + RACK1 + CD147,
+    train_survival ~ HAPLN4 + CCDC125 + CD147 + CD9:strata(time_group) + CNKSR3 +  FNBP1 + RACK1,
     data=train,
     na.action=na.pass
   )
@@ -653,12 +657,15 @@ prognostic_model <- function(train, train_survival, risk_score) {
 }
 
 
-compare_risk_scores <- function(data, data_names) {
+compare_risk_scores <- function(data, data_names, title, x_label, y_label) {
   #' Compare the performance of a set of risk scores on a list of datasets
   #' using the AUC metric
   #' 
   #' data List(data.frame): datasets on which to measure the performance
   #' data_names List(str): names of the datasets
+  #' title str: title for the heatmap
+  #' x_label str: x-axis label
+  #' y_label str: y-axis label
   
   results <- list()
   
@@ -667,13 +674,23 @@ compare_risk_scores <- function(data, data_names) {
     auc_scores <- c()
     
     for (i in seq(length(data))) {
-
-      precrec_obj <- precrec::evalmod(
-        scores=as.numeric(unlist(data[[i]][risk_score])),
-        labels=data[[i]]$event_free_survival_5y,
-      )
-      auc_score <- round(precrec::auc(precrec_obj)$auc[1], 4)
-      auc_scores <- append(auc_scores, auc_score)
+      
+      # Set random forest AUC values to 0 when predicting on the E-TABM-38
+      # dataset since it is missing required genes
+      if (
+        risk_score %in% c("risk_score_rf", "prognostic_score_rf")
+        & (grepl("E-TABM-38", data_names[i], fixed = TRUE))
+      ) {
+        auc_scores <- append(auc_scores, 0)
+      }
+      else {
+        precrec_obj <- precrec::evalmod(
+          scores=as.numeric(unlist(data[[i]][risk_score])),
+          labels=data[[i]]$event_free_survival_5y,
+        )
+        auc_score <- round(precrec::auc(precrec_obj)$auc[1], 4)
+        auc_scores <- append(auc_scores, auc_score)
+      }
     }
     results[[risk_score]] <- auc_scores
   }
@@ -681,12 +698,26 @@ compare_risk_scores <- function(data, data_names) {
   results <- data.frame(results)
   rownames(results) <- data_names
   
+  setHook(
+    "grid.newpage",
+    function() pushViewport(viewport(
+      x=0.92, y=0.9, width=0.9, height=0.8, name="vp", just=c("right","top"))
+    ),
+    action="prepend"
+  )
   pheatmap(
     results,
     cluster_rows=F,
     cluster_cols=F,
-    display_numbers=T
+    display_numbers=T,
+    angle_col=315,
+    legend=FALSE,
+    fontsize=14
   )
+  setHook("grid.newpage", NULL, "replace")
+  grid.text(title, y=1.05, gp=gpar(fontsize=18))
+  grid.text(x_label, y=-0.02, gp=gpar(fontsize=16))
+  grid.text(y_label, x=1.04, y=0.7, rot=90, gp=gpar(fontsize=16))
 }
 
 
@@ -694,15 +725,12 @@ kaplan_meier_plot <- function() {
   #' Create a Kaplan Meier plot to measure the performance of a risk score
   #' on a dataset
   
-  results$validation[[1]]$event_free_survival <- as.numeric(results$validation[[1]]$event_free_survival)
-  survival_object <- Surv(
-    results$validation[[1]]$event_free_survival_days, results$validation[[1]]$event_free_survival
-  )
-
   # Kaplan Meier Train
   fit <- survfit(
-    survival_object ~ prognostic_score_interaction_low,
-    data=results$validation[[1]],
+    Surv(
+      event_free_survival_days, event_free_survival
+    ) ~ prognostic_score_interaction_low,
+    data=results$validation[[2]],
     na.action=na.pass
   )
   ggsurvplot(
@@ -724,17 +752,54 @@ kaplan_meier_plot <- function() {
 }
 
 
-evaluate_validation_datasets_combinations <- function(results) {
+plot_gene_expression <- function(data, risk_score, genes, title, x_label, y_label) {
+  #' Plot the Z-transformed gene expression data ranked by a risk score.
+  #' 
+  #' data data.frame: contains the expression data and risk score
+  #' risk_score str: name of the risk score by which to rank
+  #' genes List(str): names of the genes to plot
+  #' title str: title of the heatmap
+  #' x_label str: x-axis label of the heatmap
+  #' y_label str: y-axis label of the heatmap
+  
+  # Create a "grid space" for the heatmap to be plotted within
+  setHook(
+    "grid.newpage",
+    function() pushViewport(viewport(
+      x=0.98, y=0.9, width=0.9, height=0.8, name="vp", just=c("right","top"))
+    ),
+    action="prepend"
+  )
+  # Plot the heatmap
+  pheatmap(
+    data[order(data[risk_score]),][colnames(data) %in% genes],
+    show_rownames=FALSE,
+    cluster_rows=F,
+    cluster_cols=F,
+    breaks=seq(-2, 3, by = 0.06),
+  )
+  # Add the titles and labels
+  setHook("grid.newpage", NULL, "replace")
+  grid.text(title, y=1.05, gp=gpar(fontsize=18))
+  grid.text(x_label, y=-0.04, gp=gpar(fontsize=16))
+  grid.text(y_label, x=-0.04, rot=90, gp=gpar(fontsize=16))
+}
+
+
+evaluate_validation_datasets_combinations <- function(results, title, x_label, y_label) {
   #' Create a heatmap comparing the AUC scores using different combinations
   #' of validation datasets and risk scores
   #' 
   #' results List(data.frame): contains the validation datasets
+  #' #' title str: title for the heatmap
+  #' x_label str: x-axis label
+  #' y_label str: y-axis label
   #' 
   #' return List(data.frame): different combinations of the validation datasets
   
   # Identify the matching columns between datasets so that
   # they can be concatenated
-  required_columns <- c(RISK_SCORES, "event_free_survival_5y")
+  required_columns <- c(RISK_SCORES, "event_free_survival_5y", "event_free_survival_days_5y")
   
   # Add the different combinations of validation datasets to a list
   validation_combos <- list()
@@ -749,7 +814,7 @@ evaluate_validation_datasets_combinations <- function(results) {
   
   # Create a heatmap to compare the AUC scores across the
   # combination of datasets and risk scores
-  compare_risk_scores(validation_combos, VALIDATION_COMBOS_NAMES)
+  compare_risk_scores(validation_combos, VALIDATION_COMBOS_NAMES, title, x_label, y_label)
   
   return(validation_combos)
 }
@@ -762,18 +827,18 @@ plot_time_dependent_roc_curves <- function(data, risk_score) {
   #' risk_score str: the risk score to be measured
   
   # Create the 1, 3, and 5 year ROC objects
-  roc_object_1 <- survivalROC(data$event_free_survival_days, 
-                              data$event_free_survival, 
+  roc_object_1 <- survivalROC(data$event_free_survival_days_5y, 
+                              data$event_free_survival_5y, 
                               data[[risk_score]],
                               predict.time = 365,
                               method = 'KM')
-  roc_object_3 <- survivalROC(data$event_free_survival_days, 
-                              data$event_free_survival, 
+  roc_object_3 <- survivalROC(data$event_free_survival_days_5y, 
+                              data$event_free_survival_5y, 
                               data[[risk_score]],
                               predict.time = 365*3,
                               method = 'KM')
-  roc_object_5 <- survivalROC(data$event_free_survival_days, 
-                              data$event_free_survival, 
+  roc_object_5 <- survivalROC(data$event_free_survival_days_5y, 
+                              data$event_free_survival_5y, 
                               data[[risk_score]],
                               predict.time = 365*5,
                               method = 'KM')
@@ -827,12 +892,18 @@ measure_auc_p_values <- function(data) {
     p_values <- c()
     
     for (i in seq(length(data))) {
-      roc_model <- roc(data[[i]]$event_free_survival_5y, data[[i]][[score]])
-      roc_baseline <- roc(data[[i]]$event_free_survival_5y, data[[i]]$risk_score_baseline)
       
-      result <- roc.test(roc_model, roc_baseline)
-      p_value <- round(result$p.value, 4)
-      p_values <- append(p_values, p_value)
+      if ((score == "prognostic_score_rf") & (i %in% c(3, 6, 7, 8)  )) {
+        p_values <- append(p_values, 1)
+      }
+      else {
+        roc_model <- roc(data[[i]]$event_free_survival_5y, data[[i]][[score]])
+        roc_baseline <- roc(data[[i]]$event_free_survival_5y, data[[i]]$risk_score_baseline)
+        
+        result <- roc.test(roc_model, roc_baseline, alternative="greater")
+        p_value <- round(result$p.value, 4)
+        p_values <- append(p_values, p_value)
+      }
     }
     results[[score]] <- p_values
   }
@@ -846,6 +917,8 @@ measure_auc_p_values <- function(data) {
     cluster_cols=F,
     display_numbers=T,
     legend=F,
+    fontsize=15,
+    angle_col=315,
     main="P-values of AUC scores between prognostic models and baseline model",
     breaks=c(
       seq(0, 0.05, length.out=ceiling(10)),
@@ -853,6 +926,33 @@ measure_auc_p_values <- function(data) {
     ),
     color=colorRampPalette(c("light blue", "white", "orange"))(20)
   )
+}
+
+
+plot_overlapping_genes <- function() {
+  #' Plot a venn diagram to show the overlapping genes between
+  #' the three models. Use global variable since this function is only used once.
+  
+  # Create Venn Diagram 
+  venn_diagram <- venn.diagram(
+    x = list(
+      genes_modelling_no_interaction,
+      genes_modelling_interaction,
+      genes_rf
+    ),
+    col=c("#440154ff", '#21908dff', '#fde725ff'),
+    category.names=c("No interaction genes" , "Interaction genes", "Random Forest genes"),
+    fill=c(alpha("#440154ff", 0.3), alpha('#21908dff', 0.3), alpha('#fde725ff', 0.3)),
+    main="The overlapping genes between the three models",
+    filename = NULL,
+    cex=1.2,
+    cat.cex=1.1,
+    main.cex=1.3
+  )
+  
+  # Plot it
+  grid.newpage()
+  grid.draw(venn_diagram)
 }
 
 
@@ -877,7 +977,7 @@ genes <- colnames(train)[16:length(colnames(train)) - 3]
 genes_modelling_no_interaction <- modelling_genes(genes, train, train_survival, FALSE)
 genes_modelling_interaction <- modelling_genes(genes, train, train_survival, TRUE)
 genes_rf <- c(
-  "BASP1", "CCDC125", "CD9", "CNKSR3", "DLG2", "FNBP1", "HAPLN4", "HSD17B12", "IGSF10", "KCNQ3", "TOX2"
+"B3GAT1", "CCDC125", "CD9", "DLG2", "FNBP1", "HAPLN4", "HEBP2", "HSD17B12", "IGSF10", "IQCE", "KCNQ3", "TOX2"
 )
 
 # Train the random forest model with the split data
@@ -893,7 +993,7 @@ model_no_interaction <- no_interaction_model(train, train_survival)
 model_interaction <- interaction_model(train, train_survival)
 
 ## Functional models
-model_differentiation <- coxph(train_survival ~ BASP1:strata(time_group) + IGSF10, data=train, na.action=na.pass)
+model_differentiation <- coxph(train_survival ~ B3GAT1 + BASP1:strata(time_group) + IGSF10, data=train, na.action=na.pass)
 model_immune_disregulation <- coxph(train_survival ~ TOX2, data=train, na.action=na.pass)
 model_metabolism <- coxph(train_survival ~ HSD17B12, data=train, na.action=na.pass)
 model_metastasis <- metastasis_model(train, train_survival)
@@ -915,12 +1015,12 @@ zph_model_tumourigenesis <- cox.zph(model_tumourigenesis)
 print(zph_model_baseline)
 print(zph_model_no_interaction)
 print(zph_model_interaction)
-print(zph_model_tumourigenesis)
-print(zph_model_metastasis)
 print(zph_model_differentiation)
 print(zph_model_immune_disregulation)
 print(zph_model_metabolism)
+print(zph_model_metastasis)
 print(zph_model_nuclear_transport)
+print(zph_model_tumourigenesis)
 
 # Plot the diagnostic plots to confirm there is no trend
 ggcoxzph(zph_model_baseline)
@@ -989,24 +1089,31 @@ data[[1]] <- results$train
 data <- append(data, results$validation)
 
 # Create a heatmap comparing the risk and prognostic scores
-data_names <-  c("train", "GSE85047", "target", "E_TABM-38", "wilms_tumor")
-compare_risk_scores(data, data_names)
+data_names <-  c("train", "GSE85047", "target", "E-TABM-38", "wilms_tumor")
+compare_risk_scores(data, data_names, 'AUC value of risk scores on datasets', 'Risk score', 'Dataset')
 
 # Can't use input parameters because of limitations in survfit function
 kaplan_meier_plot()
 
 # Plot gene expression heatmap
-pheatmap(
-  train[order(train$risk_score_interaction),][colnames(train) %in% genes_modelling_interaction],
-  show_rownames=FALSE,
-  cluster_rows=F,
-  cluster_cols=F,
-  breaks=seq(-2, 3, by = 0.06),
+## Low scores at the top
+plot_gene_expression(
+  train,
+  "risk_score_rf",
+  genes_rf,
+  "Gene expression ranked by random forest risk score",
+  "Gene",
+  "Expression level (Z-transformed)"
 )
 
 # Plot hazard scores from models
-plot_ggforest(model_prognostic_no_interaction, data=train)
-plot_ggforest(model_prognostic_interaction, data=train)
+plot_ggforest(model_no_interaction, data=train, main="Hazard ratios of prognostic model, no interaction")
+plot_ggforest(model_interaction, data=train, main="Hazard ratios of prognostic model, interaction")
+plot_ggforest(model_rf, data=train, main="Hazard ratios of prognostic model, random forest")
+
+plot_ggforest(model_prognostic_no_interaction, data=train, main="Hazard ratios of prognostic model, no interaction")
+plot_ggforest(model_prognostic_interaction, data=train, main="Hazard ratios of prognostic model, interaction")
+plot_ggforest(model_prognostic_rf, data=train, main="Hazard ratios of prognostic model, random forest")
 
 # Check number of high and low prognostic risk scores
 table(results$train$prognostic_score_interaction_low)
@@ -1023,10 +1130,17 @@ ggplot(results$validation[[4]], aes(x=prognostic_score_interaction_low, y=event_
 
 # Create a heatmap comparing the AUC scores using different combinations
 # of validation datasets and risk scores
-validation_combos <- evaluate_validation_datasets_combinations(results)
+validation_combos <- evaluate_validation_datasets_combinations(
+  results,
+  "AUC values of risk scores on validation datasets",
+  "Risk scores from models",
+  "Validation datasets"
+)
 
 # Plot the 1, 3, and 5 year ROC curves for a dataset and risk score
-plot_time_dependent_roc_curves(results$validation[[1]], "prognostic_score_rf")
+plot_time_dependent_roc_curves(validation_combos[[6]], "prognostic_score_no_interaction")
+plot_time_dependent_roc_curves(validation_combos[[6]], "prognostic_score_interaction")
+plot_time_dependent_roc_curves(validation_combos[[5]], "prognostic_score_rf")
 
 # Measure the p-values for the ROC curves of the prognostic and baseline models
 # across the combinations of validation datasets
@@ -1036,4 +1150,59 @@ measure_auc_p_values(validation_combos)
 genes_all <- c(genes_modelling_interaction, genes_modelling_no_interaction, genes_rf)
 genes_all <- genes_all[!duplicated(genes_all)]
 genes_all <- Filter(function(x) !any(grepl(":", x)), genes_all)
+
+# A venn diagram to show overlapping genes between models
+plot_overlapping_genes()
+
+# Inspect the coefficients of models' features
+summary(model_no_interaction)
+summary(model_interaction)
+plot(model_rf)
+summary(model_combine)
+
+
+
+# To be removed
+i <- 3
+
+qwe <- as.data.frame(apply(results[[2]][[i]], 2, rev))
+qwe <- qwe[!duplicated(qwe$sequence_id), ]
+
+asd <- data.frame(
+  qwe$risk_score_interaction,
+  qwe$risk_score_no_interaction,
+  qwe$risk_score_rf,
+  qwe$prognostic_score_no_interaction,
+  qwe$prognostic_score_interaction,
+  qwe$prognostic_score_rf
+)
+
+
+colnames(asd) <- c(
+  "risk_score_interaction", "risk_score_no_interaction", "risk_score_rf",
+  "prognostic_score_no_interaction", "prognostic_score_interaction", "prognostic_score_rf"
+)
+data_names
+write.csv(asd, "~/Imperial/neuroblastoma_gene_signature/data/temp/scores_E-TABM-38.csv", row.names=FALSE)
+
+
+# To make a kaplan meier plot
+fit <- survfit(
+  Surv(
+    event_free_survival_days, event_free_survival
+  ) ~ risk_score_interaction_low,
+  data=results$train,
+  na.action=na.pass
+)
+ggsurvplot(
+  fit=fit,
+  conf.int=TRUE,
+  pval=TRUE,
+  #risk.table="abs_pct",
+  xlab="Years", 
+  ylab="Overall survival probability",
+  xscale=365, # Divide x-axis into years
+  break.x.by=365, # Assume each year is only 365 days
+  xlim=c(0, 1826) # Limit to five years
+)
 

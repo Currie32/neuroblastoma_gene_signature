@@ -51,8 +51,9 @@ load_and_prepare_expression_data <- function(gene_list){
     header=TRUE,
     sep="\t"
   )
-  
+
   # Convert corrupt data to NA, then filter out rows with NA values
+  expression_data <- expression_data %>% dplyr::na_if(-6.665)
   expression_data <- expression_data[rowSums(is.na(expression_data)) == 0,]
   
   # Add external_gene_name to expression data
