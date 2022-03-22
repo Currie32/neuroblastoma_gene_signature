@@ -73,7 +73,7 @@ correct_data_types <- function(df) {
   
   # Convert null values to -1, so the feature can be an integer
   df <- df[df$mycn_amplification != "N/A", ]
-
+  
   # Convert features to integers
   df$male <- as.integer(df$male)
   df$age_at_diagnosis_days <- as.integer(df$age_at_diagnosis_days)

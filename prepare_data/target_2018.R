@@ -11,35 +11,24 @@ load_and_prepare_patient_data <- function() {
   #' 
   #' return data.frame: the patient data
   
-  # Load header row
+  # Load the patient data
   # Downloaded from https://www.cbioportal.org/study/summary?id=nbl_target_2018_pub
-  headers <- read.csv(
-    file.path(PATH, "target_neuroblastoma/data_clinical_patient.txt"),
-    nrows = 1,
-    sep="\t"
-  )
-  
-  # Load data, but skip first five rows since they do not contain the data
   patients <- read.csv(
-    file.path(PATH, "target_neuroblastoma/data_clinical_patient.txt"),
-    skip=5,
-    header=F,
+    file.path(PATH, "target_neuroblastoma/nbl_target_2018_pub_clinical_data.tsv"),
     sep="\t"
   )
-  
-  # Rename the columns using the headers
-  colnames(patients) <- headers
-  
+
   # Filter to relevant columns
   patients <- patients[c(
-    "#Identifier to uniquely specify a patient.",
+    "Patient.ID",
     "Sex",
-    "Age at which a condition or disease was first diagnosed.",
-    "Staging according to the International Neuroblastoma Staging System",
-    "Risk group.",
-    "Tumor Sample Histology",
-    "Event Free Survival Censored",
-    "EFS time."
+    "Diagnosis.Age..days.",
+    "INSS.Stage",
+    "MYCN",
+    "Risk.Group",
+    "Tumor.Sample.Histology",
+    "EFS.CENS",
+    "EFS.Time"
   )]
   
   patients <- rename_columns(patients)
@@ -56,14 +45,15 @@ rename_columns <- function(df) {
   #' 
   #' returns data.frame: the renamed patient data
   
-  names(df)[names(df) == "#Identifier to uniquely specify a patient."] <- "sequence_id"
+  names(df)[names(df) == "Patient.ID"] <- "sequence_id"
   names(df)[names(df) == "Sex"] <- "male"
-  names(df)[names(df) == "Age at which a condition or disease was first diagnosed."] <- "age_at_diagnosis_days"
-  names(df)[names(df) == "Staging according to the International Neuroblastoma Staging System"] <- "inss_stage"
-  names(df)[names(df) == "Risk group."] <- "high_risk"
-  names(df)[names(df) == "Tumor Sample Histology"] <- "favourable"
-  names(df)[names(df) == "Event Free Survival Censored"] <- "event_free_survival"
-  names(df)[names(df) == "EFS time."] <- "event_free_survival_days"
+  names(df)[names(df) == "Diagnosis.Age..days."] <- "age_at_diagnosis_days"
+  names(df)[names(df) == "INSS.Stage"] <- "inss_stage"
+  names(df)[names(df) == "MYCN"] <- "mycn_amplification"
+  names(df)[names(df) == "Risk.Group"] <- "high_risk"
+  names(df)[names(df) == "Tumor.Sample.Histology"] <- "favourable"
+  names(df)[names(df) == "EFS.CENS"] <- "event_free_survival"
+  names(df)[names(df) == "EFS.Time"] <- "event_free_survival_days"
   
   return(df)
 }
@@ -90,6 +80,12 @@ correct_data_types <- function(df) {
   
   # Drop rows with an unknown inss_stage value
   df <- df[df$inss_stage != "Unknown",]
+  
+  # Update values of mycn_amplification
+  df$mycn_amplification[df$mycn_amplification == "Amplified"] <- 1
+  df$mycn_amplification[df$mycn_amplification == "Not Amplified"] <- 0
+  df <- df[df$mycn_amplification != "Unknown",]
+  df$mycn_amplification <- as.integer(df$mycn_amplification)
   
   # Create dummy columns from inss_stage
   df <- dummy_cols(
@@ -191,3 +187,4 @@ patients <- merge(
 
 # Save the patient data
 write.csv(patients, file.path(PATH, "processed/target_2018.csv"), row.names=FALSE)
+

@@ -66,7 +66,7 @@ correct_data_types <- function(df) {
   df <- df[df$mycn_amplification != "NA", ]
   df <- df[df$event_free_survival != "NA", ]
   df <- df[df$inss_stage != "NA", ]
-  
+
   # Convert columns to integers
   df$age_at_diagnosis_days <- as.integer(df$age_at_diagnosis_days)
   df$event_free_survival_days <- as.integer(df$event_free_survival_days)

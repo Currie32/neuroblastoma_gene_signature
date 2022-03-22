@@ -239,13 +239,6 @@ target_2018 <- read.csv(file.path(PATH, "processed/target_2018.csv"))
 E_TABM_38 <- read.csv(file.path(PATH, "processed/E_TABM_38.csv"))
 wilms_tumor <- read.csv(file.path(PATH, "processed/wilms_tumor.csv"))
 
-paste(colnames(GSE49711)[
-  (colnames(GSE49711) %in% colnames(GSE62564))
-  & (colnames(GSE49711) %in% colnames(GSE85047))
-  & (colnames(GSE49711) %in% colnames(target_2018))
-  & (colnames(GSE49711) %in% colnames(E_TABM_38))
-], collapse=', ')
-
 # Load the names of the differentially expressed genes
 genes <- read.csv(file.path(PATH, "gene_list/gene_list.csv"))$external_gene_name
 
@@ -258,8 +251,6 @@ GSE62564 <- merge_expression_and_patient_data(genes, GSE62564, patients_traits)
 
 # Create training dataset
 train <- training_data(GSE49711, GSE62564)
-
-length(colnames(train)[colnames(train) %in% genes])
 
 # Average the expression values of correlated genes
 train_corr <- find_and_average_correlated_genes(genes, train)

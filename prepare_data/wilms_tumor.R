@@ -83,7 +83,7 @@ correct_data_types <- function(df) {
   df$inss_stage[df$inss_stage == "II"] <- "2"
   df$inss_stage[df$inss_stage == "III"] <- "3"
   df$inss_stage[df$inss_stage == "IV"] <- "4"
-
+  
   # Drop rows with an unknown inss_stage value
   df <- df[!df$inss_stage %in% c("", "II/V", "III/V", "IIIB", "IIIB/V", "IV/V", "U", "V"),]
   
@@ -155,7 +155,7 @@ load_and_prepare_expression_data <- function(gene_list) {
   # Label the columns with the gene names
   colnames(df_t) <- genes
   
-  # Undo log2 transformation and Z-transform the expression values
+  # Convert to dataframe
   df_t <- data.frame(df_t)
   
   # Add and truncate the sequence_id 

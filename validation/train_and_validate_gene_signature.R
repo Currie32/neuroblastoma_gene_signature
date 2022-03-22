@@ -204,7 +204,7 @@ univariate_cox_regression <- function(genes, train, train_survival) {
   #'
   #' return List(str): Names of statistically significant genes
   
-  # Store the p-values
+  # Store the significant genes
   candidate_genes <- c()
   
   for (gene in genes) {
@@ -221,10 +221,9 @@ univariate_cox_regression <- function(genes, train, train_survival) {
     p_value <- summary(result)$coefficients[5]
     
     if (p_value <= P_VALUE) {
-      candidate_genes <- append(candidate_genes, gene)
+        candidate_genes <- append(candidate_genes, gene)
     }
   }
-  paste(candidate_genes, collapse = ', ')
   
   return(candidate_genes)
 }
@@ -408,7 +407,7 @@ no_interaction_model <- function(train, train_survival) {
   # The features below are genes_modelling_no_interaction, with the
   # necessary stratification
   model <- coxph(
-    train_survival ~ CD147:strata(time_group) + CD9:strata(time_group) + HEBP2:strata(time_group) + HSD17B12 + NXT2:strata(time_group) + RACK1 + TXNDC5:strata(time_group),
+    train_survival ~ CD9:strata(time_group) + CD147:strata(time_group) + HEBP2:strata(time_group) + HSD17B12 + NXT2:strata(time_group) + RACK1 + TXNDC5:strata(time_group),
     data=train,
     na.action=na.pass
   )
@@ -448,14 +447,6 @@ rf_model <- function(train, genes_rf){
   # Subset to GSE49711
   train_rf <- train[1:498, ]
   set.seed(1)
-  
-  # Split the data into a training and testing set for parameter optimisation
-  n <- round(nrow(train_rf)*0.7)
-  train_ix <- sample(1:nrow(train_rf), n, replace=FALSE)
-  
-  # Create the training set
-  # No need for testing since parameter optimisation is in another script
-  train_rf <- train_rf[train_ix, ]
 
   # Join the random forest genes into a single string
   genes_rf_joined <- paste(genes_rf, collapse=" + ")
@@ -466,7 +457,7 @@ rf_model <- function(train, genes_rf){
     data = train_rf, 
     ntree = 150, 
     mtry = 2, 
-    nodesize = 3,
+    nodesize = 6,
     nsplit = 1,
     importance=TRUE
   )
@@ -607,7 +598,7 @@ combined_functional_model <- function(train, train_survival) {
   #' return List: the trained model
   
   model_combine <- coxph(
-    train_survival ~ risk_score_tumourigenesis + risk_score_differentiation + risk_score_immune_disregulation + risk_score_metastasis + risk_score_metabolism + risk_score_nuclear_transport,
+    train_survival ~ risk_score_differentiation + risk_score_immune_disregulation + risk_score_metabolism + risk_score_metastasis + risk_score_nuclear_transport + risk_score_tumourigenesis,
     data=train,
     na.action=na.pass
   )
@@ -683,12 +674,15 @@ compare_risk_scores <- function(data, data_names, title, x_label, y_label) {
       ) {
         auc_scores <- append(auc_scores, 0)
       }
+      # The RF risk score is only trained on one of the training datasets
+      else if ((risk_score == "risk_score_rf") & (i == 1)) {
+        roc_model <- roc(data[[i]][1:986, ]$event_free_survival_5y, data[[i]][1:986, ][[risk_score]])
+        auc_score <- round(roc_model$auc[1], 4)
+        auc_scores <- append(auc_scores, auc_score)
+      }
       else {
-        precrec_obj <- precrec::evalmod(
-          scores=as.numeric(unlist(data[[i]][risk_score])),
-          labels=data[[i]]$event_free_survival_5y,
-        )
-        auc_score <- round(precrec::auc(precrec_obj)$auc[1], 4)
+        roc_model <- roc(data[[i]]$event_free_survival_5y, data[[i]][[risk_score]])
+        auc_score <- round(roc_model$auc[1], 4)
         auc_scores <- append(auc_scores, auc_score)
       }
     }
@@ -777,6 +771,7 @@ plot_gene_expression <- function(data, risk_score, genes, title, x_label, y_labe
     cluster_rows=F,
     cluster_cols=F,
     breaks=seq(-2, 3, by = 0.06),
+    fontsize=12
   )
   # Add the titles and labels
   setHook("grid.newpage", NULL, "replace")
@@ -893,7 +888,7 @@ measure_auc_p_values <- function(data) {
     
     for (i in seq(length(data))) {
       
-      if ((score == "prognostic_score_rf") & (i %in% c(3, 6, 7, 8)  )) {
+      if ((score == "prognostic_score_rf") & (i %in% c(3, 6, 7, 8))) {
         p_values <- append(p_values, 1)
       }
       else {
@@ -993,7 +988,7 @@ model_no_interaction <- no_interaction_model(train, train_survival)
 model_interaction <- interaction_model(train, train_survival)
 
 ## Functional models
-model_differentiation <- coxph(train_survival ~ B3GAT1 + BASP1:strata(time_group) + IGSF10, data=train, na.action=na.pass)
+model_differentiation <- coxph(train_survival ~ B3GAT1:strata(time_group) + IGSF10, data=train, na.action=na.pass)
 model_immune_disregulation <- coxph(train_survival ~ TOX2, data=train, na.action=na.pass)
 model_metabolism <- coxph(train_survival ~ HSD17B12, data=train, na.action=na.pass)
 model_metastasis <- metastasis_model(train, train_survival)
@@ -1099,9 +1094,9 @@ kaplan_meier_plot()
 ## Low scores at the top
 plot_gene_expression(
   train,
-  "risk_score_rf",
-  genes_rf,
-  "Gene expression ranked by random forest risk score",
+  "risk_score_interaction",
+  genes_modelling_interaction,
+  "Gene expression ranked by interaction risk score",
   "Gene",
   "Expression level (Z-transformed)"
 )
@@ -1140,7 +1135,7 @@ validation_combos <- evaluate_validation_datasets_combinations(
 # Plot the 1, 3, and 5 year ROC curves for a dataset and risk score
 plot_time_dependent_roc_curves(validation_combos[[6]], "prognostic_score_no_interaction")
 plot_time_dependent_roc_curves(validation_combos[[6]], "prognostic_score_interaction")
-plot_time_dependent_roc_curves(validation_combos[[5]], "prognostic_score_rf")
+plot_time_dependent_roc_curves(train[1:986, ], "risk_score_rf")
 
 # Measure the p-values for the ROC curves of the prognostic and baseline models
 # across the combinations of validation datasets
@@ -1159,6 +1154,9 @@ summary(model_no_interaction)
 summary(model_interaction)
 plot(model_rf)
 summary(model_combine)
+summary(model_prognostic_no_interaction)
+summary(model_prognostic_interaction)
+summary(model_prognostic_rf)
 
 
 
@@ -1169,6 +1167,7 @@ qwe <- as.data.frame(apply(results[[2]][[i]], 2, rev))
 qwe <- qwe[!duplicated(qwe$sequence_id), ]
 
 asd <- data.frame(
+  qwe$sequence_id,
   qwe$risk_score_interaction,
   qwe$risk_score_no_interaction,
   qwe$risk_score_rf,
@@ -1179,6 +1178,7 @@ asd <- data.frame(
 
 
 colnames(asd) <- c(
+  "patient_id",
   "risk_score_interaction", "risk_score_no_interaction", "risk_score_rf",
   "prognostic_score_no_interaction", "prognostic_score_interaction", "prognostic_score_rf"
 )
@@ -1205,4 +1205,6 @@ ggsurvplot(
   break.x.by=365, # Assume each year is only 365 days
   xlim=c(0, 1826) # Limit to five years
 )
+
+summary(model_prognostic_rf)
 

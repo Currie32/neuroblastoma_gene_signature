@@ -55,7 +55,7 @@ correct_data_types <- function(df) {
   
   # Remove the patients that are missing their age at diagnosis
   df <- df[!is.na(df$age_at_diagnosis_days),]
-  
+
   # Identify the male patients
   df$male[df$male == "male"] <- 1
   df$male[df$male == "female"] <- 0
