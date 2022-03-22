@@ -766,7 +766,7 @@ plot_gene_expression <- function(data, risk_score, genes, title, x_label, y_labe
   )
   # Plot the heatmap
   pheatmap(
-    data[order(data[risk_score]),][colnames(data) %in% genes],
+    data[order(data[risk_score]), genes],
     show_rownames=FALSE,
     cluster_rows=F,
     cluster_cols=F,
@@ -1092,10 +1092,17 @@ kaplan_meier_plot()
 
 # Plot gene expression heatmap
 ## Low scores at the top
+summary(model_no_interaction)
+
+genes_modelling_no_interaction_sorted <- c("CD9", "CD147", "HEBP2", "NXT2", "HSD17B12", "TXNDC5", "RACK1")
+genes_modelling_interaction_sorted <- c("CD9", "HEBP2", "NXT2", "HSD17B12", "TXNDC5")
+genes_modelling_rf_sorted <- c("FNBP1", "CD9", "DLG2", "TOX2", "KCNQ3", "IQCE", "B3GAT1", "IGSF10", "HEBP2", "CCDC125", "HAPLN4", "HSD17B12")
+
+
 plot_gene_expression(
   train,
   "risk_score_interaction",
-  genes_modelling_interaction,
+  genes_modelling_interaction_sorted,
   "Gene expression ranked by interaction risk score",
   "Gene",
   "Expression level (Z-transformed)"
