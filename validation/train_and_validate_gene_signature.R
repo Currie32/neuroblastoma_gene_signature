@@ -181,7 +181,7 @@ modelling_genes <- function(genes, train, train_survival, interaction) {
   #' interaction bool: TRUE if the interaction step should be used
   #' 
   #' return List(str): names of the most predictive genes
-
+  
   genes_candidate <- univariate_cox_regression(genes, train, train_survival)
   genes_significant <- multivariate_cox_regression(genes_candidate, train_survival, train, FALSE, FALSE)
   
@@ -407,7 +407,7 @@ no_interaction_model <- function(train, train_survival) {
   # The features below are genes_modelling_no_interaction, with the
   # necessary stratification
   model <- coxph(
-    train_survival ~ CD9:strata(time_group) + CD147:strata(time_group) + HEBP2:strata(time_group) + HSD17B12 + NXT2:strata(time_group) + RACK1 + TXNDC5:strata(time_group),
+    train_survival ~ CD147:strata(time_group) + HEBP2:strata(time_group) + HSD17B12 + NXT2:strata(time_group) + RACK1 + TXNDC5:strata(time_group),
     data=train,
     na.action=na.pass
   )
@@ -427,7 +427,7 @@ interaction_model <- function(train, train_survival) {
   # The features below are genes_modelling_interaction, with the
   # necessary stratification
   model <- coxph(
-    train_survival ~ CD9:strata(time_group) + HEBP2:strata(time_group) + HSD17B12 + NXT2:strata(time_group) + TXNDC5:strata(time_group) + NXT2:TXNDC5 + CD9:HSD17B12,
+    train_survival ~ HEBP2:strata(time_group) + HSD17B12 + NXT2:strata(time_group) + TXNDC5:strata(time_group) + NXT2:TXNDC5,
     data=train,
     na.action=na.pass
   )
@@ -454,14 +454,32 @@ rf_model <- function(train, genes_rf){
   # Train the model
   model <- rfsrc(
     as.formula(paste("Surv(event_free_survival_days_5y, event_free_survival_5y) ~", genes_rf_joined)),
-    data = train_rf, 
-    ntree = 150, 
-    mtry = 2, 
-    nodesize = 6,
-    nsplit = 1,
+    data=train_rf, 
+    ntree=200, 
+    mtry=2,
+    nodesize=3,
+    nsplit=1,
     importance=TRUE
   )
 
+  return(model)
+}
+
+
+differentiation_model <- function(train, train_survival) {
+  #' Train a cox proportional-hazard model using the genes that affect the
+  #' differentiation pathway
+  #' 
+  #' train data.frame: contains the expression features to model
+  #' train_survival double: the survival object for the training data
+  #' 
+  #' return List: the trained model
+  
+  model <- coxph(
+    train_survival ~ B3GAT1 + CD147 + FNBP1:strata(time_group) + IGSF10 + RACK1 + TXNDC5:strata(time_group),
+    data=train,
+    na.action=na.pass
+  )
   return(model)
 }
 
@@ -494,7 +512,7 @@ metastasis_model <- function(train, train_survival) {
   #' return List: the trained model
   
   model <- coxph(
-    train_survival ~ HAPLN4 + CCDC125 + CD147 + CD9:strata(time_group) + CNKSR3 +  FNBP1 + RACK1,
+    train_survival ~ HAPLN4:strata(time_group) + CCDC125 + CD147 + CNKSR3 +  FNBP1:strata(time_group) + RACK1,
     data=train,
     na.action=na.pass
   )
@@ -623,7 +641,7 @@ prognostic_model <- function(train, train_survival, risk_score) {
   if (risk_score == "risk_score_no_interaction") {
 
     model <- coxph(
-      train_survival ~ inss_stage_2 + inss_stage_3 + inss_stage_4:strata(time_group) + inss_stage_4S + under_18_months:strata(time_group) + risk_score_no_interaction:strata(time_group),
+      train_survival ~ mycn_amplification + inss_stage_2 + inss_stage_3 + inss_stage_4:strata(time_group) + inss_stage_4S + under_18_months:strata(time_group) + risk_score_no_interaction:strata(time_group),
       data=train,
       na.action=na.pass
     )
@@ -631,7 +649,7 @@ prognostic_model <- function(train, train_survival, risk_score) {
   else if (risk_score == "risk_score_interaction") {
     
     model <- coxph(
-      train_survival ~ inss_stage_2 + inss_stage_3 + inss_stage_4:strata(time_group) + inss_stage_4S + under_18_months:strata(time_group) + risk_score_interaction:strata(time_group),
+      train_survival ~ mycn_amplification + inss_stage_2 + inss_stage_3 + inss_stage_4:strata(time_group) + inss_stage_4S + under_18_months:strata(time_group) + risk_score_interaction:strata(time_group),
       data=train,
       na.action=na.pass
     )
@@ -639,7 +657,7 @@ prognostic_model <- function(train, train_survival, risk_score) {
   else if (risk_score == "risk_score_rf") {
     
     model <- coxph(
-      train_survival ~ inss_stage_2 + inss_stage_3 + inss_stage_4:strata(time_group) + inss_stage_4S + under_18_months:strata(time_group) + risk_score_rf:strata(time_group),
+      train_survival ~ mycn_amplification + inss_stage_2 + inss_stage_3 + inss_stage_4:strata(time_group) + inss_stage_4S + under_18_months:strata(time_group) + risk_score_rf:strata(time_group),
       data=train,
       na.action=na.pass
     )
@@ -722,11 +740,12 @@ kaplan_meier_plot <- function() {
   # Kaplan Meier Train
   fit <- survfit(
     Surv(
-      event_free_survival_days, event_free_survival
+      event_free_survival_days_5y, event_free_survival_5y
     ) ~ prognostic_score_interaction_low,
-    data=results$validation[[2]],
+    data=results$validation[[4]],
     na.action=na.pass
   )
+  
   ggsurvplot(
     fit=fit,
     conf.int=TRUE,
@@ -770,7 +789,7 @@ plot_gene_expression <- function(data, risk_score, genes, title, x_label, y_labe
     show_rownames=FALSE,
     cluster_rows=F,
     cluster_cols=F,
-    breaks=seq(-2, 3, by = 0.06),
+    breaks=seq(-2.5, 2.5, by = 0.07),
     fontsize=12
   )
   # Add the titles and labels
@@ -972,7 +991,7 @@ genes <- colnames(train)[16:length(colnames(train)) - 3]
 genes_modelling_no_interaction <- modelling_genes(genes, train, train_survival, FALSE)
 genes_modelling_interaction <- modelling_genes(genes, train, train_survival, TRUE)
 genes_rf <- c(
-"B3GAT1", "CCDC125", "CD9", "DLG2", "FNBP1", "HAPLN4", "HEBP2", "HSD17B12", "IGSF10", "IQCE", "KCNQ3", "TOX2"
+"B3GAT1", "CCDC125", "FNBP1", "HAPLN4", "HEBP2", "HSD17B12", "IGSF10", "IQCE", "KCNQ3", "TOX2"
 )
 
 # Train the random forest model with the split data
@@ -988,7 +1007,7 @@ model_no_interaction <- no_interaction_model(train, train_survival)
 model_interaction <- interaction_model(train, train_survival)
 
 ## Functional models
-model_differentiation <- coxph(train_survival ~ B3GAT1:strata(time_group) + IGSF10, data=train, na.action=na.pass)
+model_differentiation <- differentiation_model(train, train_survival)
 model_immune_disregulation <- coxph(train_survival ~ TOX2, data=train, na.action=na.pass)
 model_metabolism <- coxph(train_survival ~ HSD17B12, data=train, na.action=na.pass)
 model_metastasis <- metastasis_model(train, train_survival)
@@ -1045,7 +1064,7 @@ train <- results$train
 validation <- results$validation
 
 # Scale the risk scores
-train <- scale_risk_scores(train)
+# train <- scale_risk_scores(train)
 
 # Train the combined functional model
 model_combine <- combined_functional_model(train, train_survival)
@@ -1092,18 +1111,15 @@ kaplan_meier_plot()
 
 # Plot gene expression heatmap
 ## Low scores at the top
-summary(model_no_interaction)
-
-genes_modelling_no_interaction_sorted <- c("CD9", "CD147", "HEBP2", "NXT2", "HSD17B12", "TXNDC5", "RACK1")
-genes_modelling_interaction_sorted <- c("CD9", "HEBP2", "NXT2", "HSD17B12", "TXNDC5")
-genes_modelling_rf_sorted <- c("FNBP1", "CD9", "DLG2", "TOX2", "KCNQ3", "IQCE", "B3GAT1", "IGSF10", "HEBP2", "CCDC125", "HAPLN4", "HSD17B12")
-
+genes_modelling_no_interaction_sorted <- c("CD147", "HEBP2", "NXT2", "HSD17B12", "TXNDC5", "RACK1")
+genes_modelling_interaction_sorted <- c("HEBP2", "NXT2", "HSD17B12", "TXNDC5")
+genes_modelling_rf_sorted <- c("FNBP1", "TOX2", "KCNQ3", "IQCE", "B3GAT1", "IGSF10", "HEBP2", "CCDC125", "HAPLN4", "HSD17B12")
 
 plot_gene_expression(
   train,
-  "risk_score_interaction",
-  genes_modelling_interaction_sorted,
-  "Gene expression ranked by interaction risk score",
+  "risk_score_rf",
+  genes_modelling_rf_sorted,
+  "Gene expression ranked by random forest risk score",
   "Gene",
   "Expression level (Z-transformed)"
 )
@@ -1165,7 +1181,7 @@ summary(model_prognostic_no_interaction)
 summary(model_prognostic_interaction)
 summary(model_prognostic_rf)
 
-
+summary(model_no_interaction)
 
 # To be removed
 i <- 3
@@ -1175,19 +1191,28 @@ qwe <- qwe[!duplicated(qwe$sequence_id), ]
 
 asd <- data.frame(
   qwe$sequence_id,
-  qwe$risk_score_interaction,
-  qwe$risk_score_no_interaction,
-  qwe$risk_score_rf,
-  qwe$prognostic_score_no_interaction,
-  qwe$prognostic_score_interaction,
-  qwe$prognostic_score_rf
+  as.numeric(qwe$risk_score_interaction),
+  qwe$risk_score_interaction_low,
+  as.numeric(qwe$risk_score_no_interaction),
+  qwe$risk_score_no_interaction_low,
+  as.numeric(qwe$risk_score_rf),
+  qwe$risk_score_rf_low,
+  as.numeric(qwe$prognostic_score_no_interaction),
+  qwe$prognostic_score_no_interaction_low,
+  as.numeric(qwe$prognostic_score_interaction),
+  qwe$prognostic_score_interaction_low,
+  as.numeric(qwe$prognostic_score_rf),
+  qwe$prognostic_score_rf_low
 )
-
 
 colnames(asd) <- c(
   "patient_id",
-  "risk_score_interaction", "risk_score_no_interaction", "risk_score_rf",
-  "prognostic_score_no_interaction", "prognostic_score_interaction", "prognostic_score_rf"
+  "risk_score_interaction", "risk_score_interaction_low",
+  "risk_score_no_interaction", "risk_score_no_interaction_low",
+  "risk_score_rf", "risk_score_rf_low",
+  "prognostic_score_no_interaction", "prognostic_score_no_interaction_low",
+  "prognostic_score_interaction", "prognostic_score_interaction_low",
+  "prognostic_score_rf", "prognostic_score_rf_low"
 )
 data_names
 write.csv(asd, "~/Imperial/neuroblastoma_gene_signature/data/temp/scores_E-TABM-38.csv", row.names=FALSE)
@@ -1214,4 +1239,3 @@ ggsurvplot(
 )
 
 summary(model_prognostic_rf)
-
