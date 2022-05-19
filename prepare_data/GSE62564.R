@@ -51,9 +51,8 @@ load_and_prepare_expression_data <- function(gene_list){
     header=TRUE,
     sep="\t"
   )
-
+  
   # Convert corrupt data to NA, then filter out rows with NA values
-  expression_data <- expression_data %>% dplyr::na_if(-6.665)
   expression_data <- expression_data[rowSums(is.na(expression_data)) == 0,]
   
   # Add external_gene_name to expression data
@@ -154,7 +153,7 @@ rename_columns <- function(df) {
   
   names(df)[names(df) == "title"] <- "sequence_id"
   names(df)[names(df) == "geo_accession"] <- "geo_id"
-  names(df)[names(df) == "Sex:ch1"] <- "male"
+  names(df)[names(df) == "Sex:ch1"] <- "sex"
   names(df)[names(df) == "age:ch1"] <- "age_days"
   names(df)[names(df) == "high risk:ch1"] <- "high_risk"
   names(df)[names(df) == "d_fav_all:ch1"] <- "favourable"
@@ -179,18 +178,18 @@ correct_data_types <- function(df) {
   df$high_risk[df$high_risk == "HR"] <- 1
   df$high_risk[is.na(df$high_risk)] <- 0
   
-  # Identify the male patients
-  df$male[df$male == "M"] <- 1
-  df$male[df$male == "F"] <- 0
+  # Use full spelling
+  df$sex[df$sex == "M"] <- "Male"
+  df$sex[df$sex == "F"] <- "Female"
   
   # Convert null values to -1, so the feature can be an integer
-  df$favourable[is.na(df$favourable)] <- -1
+  df$favourable[df$favourable == "1"] <- "Favourable"
+  df$favourable[df$favourable == "0"] <- "Unfavourable"
+  df$favourable[is.na(df$favourable)] <- "Unknown"
   
   # Convert features to integers
   df$age_days <- as.integer(df$age_days)
-  df$male <- as.integer(df$male)
   df$high_risk <- as.integer(df$high_risk)
-  df$favourable <- as.integer(df$favourable)
   df$event_free_survival <- as.integer(df$event_free_survival)
   df$event_free_survival_days <- as.integer(df$event_free_survival_days)
   

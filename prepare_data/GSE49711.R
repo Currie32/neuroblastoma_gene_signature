@@ -49,7 +49,7 @@ rename_columns <- function(df) {
   
   names(df)[names(df) == "title"] <- "sequence_id"
   names(df)[names(df) == "geo_accession"] <- "geo_id"
-  names(df)[names(df) == "Sex:ch1"] <- "male"
+  names(df)[names(df) == "Sex:ch1"] <- "sex"
   names(df)[names(df) == "age at diagnosis:ch1"] <- "age_at_diagnosis_days"
   names(df)[names(df) == "high risk:ch1"] <- "high_risk"
   names(df)[names(df) == "death from disease:ch1"] <- "death_from_disease"
@@ -66,16 +66,15 @@ correct_data_types <- function(df) {
   #' df data.frame: the patient data
   #' 
   #' return data.frame: the formatted patient data
-  
-  # Identify the male patients
-  df$male[df$male == "M"] <- 1
-  df$male[df$male == "F"] <- 0
+
+  # Use full spelling
+  df$sex[df$sex == "M"] <- "Male"
+  df$sex[df$sex == "F"] <- "Female"
   
   # Convert null values to -1, so the feature can be an integer
   df <- df[df$mycn_amplification != "N/A", ]
-  
+
   # Convert features to integers
-  df$male <- as.integer(df$male)
   df$age_at_diagnosis_days <- as.integer(df$age_at_diagnosis_days)
   df$high_risk <- as.integer(df$high_risk)
   df$death_from_disease <- as.integer(df$death_from_disease)
