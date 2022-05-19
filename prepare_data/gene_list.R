@@ -27,12 +27,14 @@ limma_voom <- data.frame(fread(
 ))
 
 # Add genes from https://www.sciencedirect.com/science/article/pii/S2405580821001758
-external_gene_name = c("ACE2", "CD147", "PPIA", "PPIB")
+# And the alternative names for CD147 and RACK1
+external_gene_name = c(
+  "ACE2", "CD147", "PPIA", "PPIB",
+  "BSG", "GNB2L1"
+)
 ensembl_gene_id_version = c(
-  "ENSG00000130234",
-  "ENSG00000172270",
-  "ENSG00000196262",
-  "ENSG00000166794"
+  "ENSG00000130234", "ENSG00000172270", "ENSG00000196262", "ENSG00000166794",
+  "ENSG00000172270", "ENSG00000204628"
 )
 
 # Create a dataframe using the two vectors from above

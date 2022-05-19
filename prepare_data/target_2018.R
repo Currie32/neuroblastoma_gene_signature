@@ -56,6 +56,7 @@ rename_columns <- function(df) {
   #' 
   #' returns data.frame: the renamed patient data
   
+<<<<<<< Updated upstream
   names(df)[names(df) == "#Identifier to uniquely specify a patient."] <- "sequence_id"
   names(df)[names(df) == "Sex"] <- "male"
   names(df)[names(df) == "Age at which a condition or disease was first diagnosed."] <- "age_at_diagnosis_days"
@@ -64,6 +65,17 @@ rename_columns <- function(df) {
   names(df)[names(df) == "Tumor Sample Histology"] <- "favourable"
   names(df)[names(df) == "Event Free Survival Censored"] <- "event_free_survival"
   names(df)[names(df) == "EFS time."] <- "event_free_survival_days"
+=======
+  names(df)[names(df) == "Patient.ID"] <- "sequence_id"
+  names(df)[names(df) == "Sex"] <- "sex"
+  names(df)[names(df) == "Diagnosis.Age..days."] <- "age_at_diagnosis_days"
+  names(df)[names(df) == "INSS.Stage"] <- "inss_stage"
+  names(df)[names(df) == "MYCN"] <- "mycn_amplification"
+  names(df)[names(df) == "Risk.Group"] <- "high_risk"
+  names(df)[names(df) == "Tumor.Sample.Histology"] <- "favourable"
+  names(df)[names(df) == "EFS.CENS"] <- "event_free_survival"
+  names(df)[names(df) == "EFS.Time"] <- "event_free_survival_days"
+>>>>>>> Stashed changes
   
   return(df)
 }
@@ -75,10 +87,9 @@ correct_data_types <- function(df) {
   #' 
   #' return data.frame: the formatted patient data
   
-  # Identify the male patients
-  df$male[df$male == "Male"] <- 1
-  df$male[df$male == "Female"] <- 0
-  df$male <- as.integer(df$male)
+  # Use full spelling
+  df$sex[df$sex == "M"] <- "Male"
+  df$sex[df$sex == "F"] <- "Female"
   
   # Update values of inss_stage
   df$inss_stage[df$inss_stage == "Stage 1"] <- "1"
@@ -102,9 +113,9 @@ correct_data_types <- function(df) {
   # Set high risk values to 1, all else is 0
   df$high_risk <- ifelse(df$high_risk == "High Risk", 1, 0)
   
-  # Set favourable values to 1, all else is 0
-  df$favourable <- ifelse(df$favourable == "Favourable", 1, 0)
-  
+  # Set Favourable values to 1, Unfavourable to 0, and Unknown to -1
+  df$favourable[df$favourable == "Favorable"] <- "Favourable"
+
   # Drop rows with a null event_free_survival value
   df <- df[!is.na(df$event_free_survival),]
   

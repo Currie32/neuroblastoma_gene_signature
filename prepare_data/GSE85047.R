@@ -2,6 +2,7 @@
 
 library(GEOquery)
 library(fastDummies)
+library(stringr)
 
 
 PATH <- "~/Imperial/neuroblastoma_gene_signature/data/"
@@ -16,7 +17,7 @@ prepare_patient_data <- function(gse) {
   
   # Extract patient data
   patients <- gse[["GSE85047_series_matrix.txt.gz"]]@phenoData@data
-  
+
   # Filter to relevant columns
   patients <- patients[c(
     "title",

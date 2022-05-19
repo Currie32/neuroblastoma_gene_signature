@@ -20,9 +20,8 @@ extract_patient_traits <- function(GSE49711, GSE62564) {
   patient_traits_1 <- GSE49711[c(
     "sequence_id",
     "geo_id",
-    "male",
+    "sex",
     "age_at_diagnosis_days",
-    "high_risk",
     "mycn_amplification",
     "inss_stage_2",
     "inss_stage_3",
@@ -33,6 +32,7 @@ extract_patient_traits <- function(GSE49711, GSE62564) {
   # The patient traits from GSE62564
   patient_traits_2 <- GSE62564[c(
     "sequence_id",
+    "favourable",
     "event_free_survival",
     "event_free_survival_days"
   )]
@@ -236,8 +236,6 @@ GSE49711 <- read.csv(file.path(PATH, "processed/GSE49711.csv"))
 GSE62564 <- read.csv(file.path(PATH, "processed/GSE62564.csv"))
 GSE85047 <- read.csv(file.path(PATH, "processed/GSE85047.csv"))
 target_2018 <- read.csv(file.path(PATH, "processed/target_2018.csv"))
-E_TABM_38 <- read.csv(file.path(PATH, "processed/E_TABM_38.csv"))
-wilms_tumor <- read.csv(file.path(PATH, "processed/wilms_tumor.csv"))
 
 # Load the names of the differentially expressed genes
 genes <- read.csv(file.path(PATH, "gene_list/gene_list.csv"))$external_gene_name
@@ -246,11 +244,13 @@ genes <- read.csv(file.path(PATH, "gene_list/gene_list.csv"))$external_gene_name
 patients_traits <- extract_patient_traits(GSE49711, GSE62564)
 
 # Combine the expression and patient data
-GSE49711 <- merge_expression_and_patient_data(genes, GSE49711, patients_traits)
-GSE62564 <- merge_expression_and_patient_data(genes, GSE62564, patients_traits)
+train <- merge_expression_and_patient_data(genes, GSE49711, patients_traits)
 
-# Create training dataset
-train <- training_data(GSE49711, GSE62564)
+columns_intersect <- intersect(intersect(colnames(train), colnames(GSE85047)), colnames(target_2018))
+
+train <- train[columns_intersect]
+GSE85047 <- GSE85047[columns_intersect]
+target_2018 <- target_2018[columns_intersect]
 
 # Average the expression values of correlated genes
 train_corr <- find_and_average_correlated_genes(genes, train)
@@ -262,30 +262,26 @@ correlated_genes <- colnames(train_corr)[!colnames(train_corr) %in% colnames(tra
 train_corr <- average_correlated_genes_train(correlated_genes, train_corr, train)
 
 # Add missing features to testing datasets
-GSE85047_corr <- add_missing_features(train, GSE85047)
-target_2018_corr <- add_missing_features(train, target_2018)
-E_TABM_38_corr <- add_missing_features(train, E_TABM_38)
-wilms_tumor_corr <- add_missing_features(train, wilms_tumor)
+# GSE85047_corr <- add_missing_features(train, GSE85047)
+# target_2018_corr <- add_missing_features(train, target_2018)
+# E_TABM_38_corr <- add_missing_features(train, E_TABM_38)
+# wilms_tumor_corr <- add_missing_features(train, wilms_tumor)
 
 # Average the expression values of the correlated genes
-GSE85047_corr <- average_correlated_genes(correlated_genes, GSE85047_corr)
-target_2018_corr <- average_correlated_genes(correlated_genes, target_2018_corr)
-E_TABM_38_corr <- average_correlated_genes(correlated_genes, E_TABM_38_corr)
-wilms_tumor_corr <- average_correlated_genes(correlated_genes, wilms_tumor_corr)
+# GSE85047_corr <- average_correlated_genes(correlated_genes, GSE85047_corr)
+# target_2018_corr <- average_correlated_genes(correlated_genes, target_2018_corr)
+# E_TABM_38_corr <- average_correlated_genes(correlated_genes, E_TABM_38_corr)
+# wilms_tumor_corr <- average_correlated_genes(correlated_genes, wilms_tumor_corr)
 
 # Add under_18_months feature
-train_corr$under_18_months <- is_under_18_months(train_corr)
-GSE85047_corr$under_18_months <- is_under_18_months(GSE85047_corr)
-target_2018_corr$under_18_months <- is_under_18_months(target_2018_corr)
-E_TABM_38_corr$under_18_months <- is_under_18_months(E_TABM_38_corr)
-wilms_tumor_corr$under_18_months <- is_under_18_months(wilms_tumor_corr)
+train$under_18_months <- is_under_18_months(train)
+GSE85047$under_18_months <- is_under_18_months(GSE85047)
+target_2018$under_18_months <- is_under_18_months(target_2018)
 
 # Save datasets
-write.csv(train_corr, file.path(PATH, "modelling/train.csv"), row.names=FALSE)
-write.csv(GSE85047_corr, file.path(PATH, "modelling/test_GSE85047.csv"), row.names=FALSE)
-write.csv(target_2018_corr, file.path(PATH, "modelling/test_target.csv"), row.names=FALSE)
-write.csv(E_TABM_38_corr, file.path(PATH, "modelling/test_E_TABM_38.csv"), row.names=FALSE)
-write.csv(wilms_tumor_corr, file.path(PATH, "modelling/test_wilms_tumor.csv"), row.names=FALSE)
+write.csv(train, file.path(PATH, "modelling/train.csv"), row.names=FALSE)
+write.csv(GSE85047, file.path(PATH, "modelling/test_GSE85047.csv"), row.names=FALSE)
+write.csv(target_2018, file.path(PATH, "modelling/test_target.csv"), row.names=FALSE)
 
 # Create Venn diagram to show overlapping genes between datasets
 venn_diagram <- venn.diagram(
@@ -293,7 +289,6 @@ venn_diagram <- venn.diagram(
     colnames(GSE49711)[13:length(colnames(GSE49711))],
     colnames(GSE85047)[11:length(colnames(GSE85047))],
     colnames(target_2018)[13:length(colnames(target_2018))],
-    colnames(E_TABM_38)[10:length(colnames(E_TABM_38))]
   ),
   #col=c("#440154ff", '#21908dff', '#fde725ff'),
   category.names=c("GSE49711/GSE62564" , "GSE85047", "TARGET", "E-TABM-38"),
